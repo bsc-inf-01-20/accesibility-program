@@ -1,278 +1,396 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { 
+    Button,
+    ButtonStrip,
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableRow,
+    CircularLoader,
+    NoticeBox
+} from '@dhis2/ui';
 import useFetchSchools from './Hooks/useFetchSchools';
 
-// List of available Overpass API endpoints
 const OVERPASS_INSTANCES = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://lz4.overpass-api.de/api/interpreter',
-  'https://z.overpass-api.de/api/interpreter'
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://lz4.overpass-api.de/api/interpreter',
+    'https://z.overpass-api.de/api/interpreter'
 ];
 
 const OSRM_URL = 'http://localhost:5000/route/v1/walking';
-const BATCH_SIZE = 5; // Reduced for better rate limiting
-const BATCH_DELAY_MS = 1000; // Delay between batches
+const INITIAL_BATCH_SIZE = 5;
+const BATCH_DELAY_MS = 1000;
+const PARALLEL_REQUESTS = 2;
+const CACHE_TTL_MS = 3600000; // 1 hour cache
+const SEARCH_RADIUS = 10000; // 10km search radius for markets
 
-// Cache implementation
 const placeCache = new Map();
 const getCacheKey = (lat, lon, radius, type) => 
-  `${lat.toFixed(4)}_${lon.toFixed(4)}_${radius}_${type}`;
+    `${lat.toFixed(4)}_${lon.toFixed(4)}_${radius}_${type}`;
 
-const fetchPlaces = async (lat, lon, radius, type, instanceIndex = 0, retryCount = 0) => {
-  const cacheKey = getCacheKey(lat, lon, radius, type);
-  if (placeCache.has(cacheKey)) return placeCache.get(cacheKey);
+const cleanupCache = () => {
+    const now = Date.now();
+    for (const [key, { timestamp }] of placeCache.entries()) {
+        if (now - timestamp > CACHE_TTL_MS) {
+            placeCache.delete(key);
+        }
+    }
+};
 
-  const queries = {
-    market: `node["amenity"="marketplace"](around:${radius},${lat},${lon});`,
-    hospital: `node["amenity"="hospital"](around:${radius},${lat},${lon});`,
-    clinic: `node["amenity"="clinic"](around:${radius},${lat},${lon});`,
-  };
-
-  if (!queries[type]) return [];
-
-  const overpassQuery = `[out:json][timeout:30];(${queries[type]});out body;`;
-  const selectedInstance = OVERPASS_INSTANCES[instanceIndex % OVERPASS_INSTANCES.length];
-
-  try {
-    const response = await fetch(`${selectedInstance}?data=${encodeURIComponent(overpassQuery)}`, {
-      signal: AbortSignal.timeout(10000) // 10 second timeout
-    });
-
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const contentType = response.headers.get('content-type');
-    if (!contentType?.includes('application/json')) {
-      throw new Error('Invalid content type');
+const fetchNearbyMarkets = async (lat, lon, instanceIndex = 0, retryCount = 0) => {
+    cleanupCache();
+    const cacheKey = getCacheKey(lat, lon, SEARCH_RADIUS, 'market');
+    
+    if (placeCache.has(cacheKey)) {
+        return placeCache.get(cacheKey).data;
     }
 
-    const data = await response.json();
-    const results = data.elements.map((p) => ({
-      name: p.tags?.name || 'Unknown',
-      lat: p.lat,
-      lon: p.lon,
-    }));
+    const overpassQuery = `
+        [out:json][timeout:30];
+        node["amenity"="marketplace"](around:${SEARCH_RADIUS},${lat},${lon});
+        out body;
+    `;
 
-    placeCache.set(cacheKey, results);
-    return results;
-  } catch (err) {
-    console.error(`Attempt ${retryCount + 1} failed on ${selectedInstance}:`, err.message);
+    const selectedInstance = OVERPASS_INSTANCES[instanceIndex % OVERPASS_INSTANCES.length];
 
-    // Try next instance or retry
-    if (retryCount < 3) {
-      const nextInstanceIndex = (instanceIndex + 1) % OVERPASS_INSTANCES.length;
-      return fetchPlaces(lat, lon, radius, type, nextInstanceIndex, retryCount + 1);
+    try {
+        const response = await fetch(`${selectedInstance}?data=${encodeURIComponent(overpassQuery)}`, {
+            signal: AbortSignal.timeout(15000)
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+        const markets = data.elements.map(element => ({
+            name: element.tags?.name || 'Unnamed Market',
+            lat: element.lat,
+            lon: element.lon
+        }));
+
+        placeCache.set(cacheKey, {
+            data: markets,
+            timestamp: Date.now()
+        });
+
+        return markets;
+    } catch (err) {
+        console.error(`Attempt ${retryCount + 1} failed on ${selectedInstance}:`, err.message);
+
+        if (retryCount < 3) {
+            const nextInstanceIndex = (instanceIndex + 1) % OVERPASS_INSTANCES.length;
+            return fetchNearbyMarkets(lat, lon, nextInstanceIndex, retryCount + 1);
+        }
+
+        console.error('All Overpass instances failed for query');
+        return [];
     }
-
-    console.error('All instances failed for query:', overpassQuery);
-    return [];
-  }
 };
 
 const findClosestPlace = async (school, places) => {
-  if (!places.length) return null;
-
-  try {
-    const placeCoords = places.map((p) => `${p.lon},${p.lat}`).join(';');
-    const osrmQuery = `${OSRM_URL}/${school.geometry.coordinates[0]},${school.geometry.coordinates[1]};${placeCoords}?overview=false`;
-
-    const response = await fetch(osrmQuery, { signal: AbortSignal.timeout(15000) });
-    const data = await response.json();
-
-    if (!data.routes?.[0]?.legs) {
-      console.warn(`No valid routes for ${school.displayName}`);
-      return null;
+    if (!places || places.length === 0) {
+        console.log(`No markets found near ${school.displayName}`);
+        return null;
     }
 
-    const distances = data.routes[0].legs.map((leg, index) => ({
-      place: places[index].name,
-      distance: leg.distance / 1000, // Convert to km
-    }));
+    try {
+        const startLon = school.geometry.coordinates[0];
+        const startLat = school.geometry.coordinates[1];
+        const destinations = places.map(p => `${p.lon},${p.lat}`).join(';');
+        
+        const osrmQuery = `${OSRM_URL}/${startLon},${startLat};${destinations}?overview=false`;
+        console.log('Making OSRM request:', osrmQuery);
 
-    distances.sort((a, b) => a.distance - b.distance);
-    return {
-      school: school.displayName,
-      place: distances[0].place,
-      distance: distances[0].distance,
-    };
-  } catch (err) {
-    console.error(`OSRM error for ${school.displayName}:`, err);
-    return null;
-  }
+        const response = await fetch(osrmQuery, {
+            signal: AbortSignal.timeout(15000),
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('OSRM error response:', errorText);
+            return null;
+        }
+
+        const data = await response.json();
+
+        if (data.code !== 'Ok' || !data.routes?.[0]?.legs) {
+            console.warn('Invalid OSRM response structure');
+            return null;
+        }
+
+        const distances = data.routes[0].legs.map((leg, index) => ({
+            place: places[index].name,
+            distance: leg.distance / 1000, // Convert to km
+        }));
+
+        distances.sort((a, b) => a.distance - b.distance);
+        
+        return {
+            school: school.displayName,
+            place: distances[0].place,
+            distance: distances[0].distance.toFixed(2),
+            id: `${school.displayName}-${Date.now()}`
+        };
+        
+    } catch (err) {
+        console.error(`Error processing ${school.displayName}:`, err);
+        return null;
+    }
 };
 
 const ClosestPlaceFinder = () => {
-  const { schools, fetchNextPage, loading: schoolsLoading, hasMore, error: schoolsError } = useFetchSchools();
-  const [places, setPlaces] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [progress, setProgress] = useState({ processed: 0, total: 0 });
-  const [currentBatch, setCurrentBatch] = useState([]);
-  const [activeInstance, setActiveInstance] = useState(OVERPASS_INSTANCES[0]);
+    const { schools, fetchNextPage, loading: schoolsLoading, hasMore, error: schoolsError } = useFetchSchools();
+    const [places, setPlaces] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [progress, setProgress] = useState({ processed: 0, total: 1 });
+    const [currentBatch, setCurrentBatch] = useState([]);
+    const [activeInstance, setActiveInstance] = useState(OVERPASS_INSTANCES[0]);
 
-  const processBatch = useCallback(async (batch, batchIndex) => {
-    const instanceIndex = batchIndex % OVERPASS_INSTANCES.length;
-    setActiveInstance(OVERPASS_INSTANCES[instanceIndex]);
+    const processBatch = useCallback(async (batch, batchIndex) => {
+        const instanceIndex = batchIndex % OVERPASS_INSTANCES.length;
+        setActiveInstance(OVERPASS_INSTANCES[instanceIndex]);
+        
+        const batchResults = [];
 
-    const batchResults = [];
-    for (const school of batch) {
-      try {
-        const nearbyPlaces = await fetchPlaces(
-          school.geometry.coordinates[1],
-          school.geometry.coordinates[0],
-          20000,
-          'market',
-          instanceIndex
-        );
+        for (const school of batch) {
+            try {
+                const markets = await fetchNearbyMarkets(
+                    school.geometry.coordinates[1],
+                    school.geometry.coordinates[0],
+                    instanceIndex
+                );
 
-        if (nearbyPlaces.length > 0) {
-          const closest = await findClosestPlace(school, nearbyPlaces);
-          if (closest) batchResults.push(closest);
+                if (markets.length > 0) {
+                    const closest = await findClosestPlace(school, markets);
+                    if (closest) {
+                        setPlaces(prev => [...prev, closest]);
+                        batchResults.push(closest);
+                    }
+                }
+            } catch (err) {
+                console.error(`Error processing ${school.displayName}:`, err);
+            } finally {
+                setProgress(prev => ({
+                    ...prev,
+                    processed: Math.min(prev.total, prev.processed + 1)
+                }));
+            }
         }
-      } catch (error) {
-        console.error(`Error processing ${school.displayName}:`, error);
-      } finally {
-        setProgress(prev => ({ ...prev, processed: prev.processed + 1 }));
-      }
-    }
-    return batchResults;
-  }, []);
 
-  const handleFetchData = async () => {
-    if (loading || !schools.length) return;
+        return batchResults;
+    }, []);
 
-    setLoading(true);
-    setError(null);
-    setPlaces([]);
-    setProgress({ processed: 0, total: schools.length });
+    const handleFetchData = async () => {
+        if (loading || !schools.length) return;
 
-    try {
-      let batchIndex = 0;
-      for (let i = 0; i < schools.length; i += BATCH_SIZE) {
-        const batch = schools.slice(i, i + BATCH_SIZE);
-        setCurrentBatch(batch.map(s => s.displayName));
-
-        const batchResults = await processBatch(batch, batchIndex);
-        setPlaces(prev => [...prev, ...batchResults]);
-        batchIndex++;
-
-        if (i + BATCH_SIZE < schools.length) {
-          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+        // Verify OSRM connection
+        try {
+            console.log('Testing OSRM connection...');
+            const testResponse = await fetch(
+                `${OSRM_URL}/34.0,-13.5;34.1,-13.5?overview=false`,
+                { signal: AbortSignal.timeout(5000) }
+            );
+            
+            if (!testResponse.ok) {
+                throw new Error(`OSRM responded with status ${testResponse.status}`);
+            }
+            
+            const testData = await testResponse.json();
+            if (testData.code !== 'Ok') {
+                throw new Error('OSRM returned non-OK status');
+            }
+            console.log('OSRM connection verified');
+        } catch (err) {
+            setError(`Failed to connect to OSRM: ${err.message}`);
+            return;
         }
-      }
-    } catch (error) {
-      setError('Processing failed: ' + error.message);
-    } finally {
-      setLoading(false);
-      setCurrentBatch([]);
-    }
-  };
 
-  useEffect(() => {
-    if (!schoolsLoading && schools.length === 0 && hasMore) {
-      fetchNextPage();
-    }
-  }, [schoolsLoading, schools, hasMore, fetchNextPage]);
+        setLoading(true);
+        setError(null);
+        setPlaces([]);
+        setProgress({ processed: 0, total: schools.length });
 
-  return (
-    <div className="p-4 max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">School Proximity Analyzer</h1>
-      
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={handleFetchData}
-            disabled={loading || schoolsLoading}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
-          >
-            {loading ? (
-              <span className="flex items-center">
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Processing ({progress.processed}/{progress.total})
-              </span>
-            ) : 'Start Processing'}
-          </button>
+        try {
+            let batchIndex = 0;
+            let dynamicBatchSize = INITIAL_BATCH_SIZE;
 
-          <div className="text-sm text-gray-600">
-            Active Overpass Instance: <span className="font-mono text-blue-600">{new URL(activeInstance).hostname}</span>
-          </div>
-        </div>
+            for (let i = 0; i < schools.length; i += dynamicBatchSize) {
+                const batch = schools.slice(i, i + dynamicBatchSize);
+                setCurrentBatch(batch.map(s => s.displayName));
 
-        {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">Error</h3>
-                <div className="mt-2 text-sm text-red-700">{error}</div>
-              </div>
+                const startTime = Date.now();
+                await processBatch(batch, batchIndex);
+                const processingTime = Date.now() - startTime;
+
+                batchIndex++;
+                
+                if (processingTime < 1000 && dynamicBatchSize < 10) {
+                    dynamicBatchSize = Math.min(dynamicBatchSize + 1, 10);
+                } else if (processingTime > 3000 && dynamicBatchSize > 2) {
+                    dynamicBatchSize = Math.max(dynamicBatchSize - 1, 2);
+                }
+
+                if (i + dynamicBatchSize < schools.length) {
+                    await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+                }
+            }
+        } catch (error) {
+            console.error('Processing error:', error);
+            setError('Processing failed: ' + error.message);
+        } finally {
+            setLoading(false);
+            setCurrentBatch([]);
+        }
+    };
+
+    useEffect(() => {
+        if (!schoolsLoading && schools.length === 0 && hasMore) {
+            fetchNextPage();
+        }
+    }, [schoolsLoading, schools, hasMore, fetchNextPage]);
+
+    const progressPercent = Math.min(100, 
+        (progress.processed / Math.max(1, progress.total)) * 100
+    );
+
+   return (
+        <div style={{ padding: '16px', maxWidth: '1200px', margin: '0 auto' }}>
+            <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '24px' }}>
+                School Proximity Analyzer
+            </h1>
+            
+            <div style={{ 
+                backgroundColor: 'white', 
+                padding: '16px', 
+                borderRadius: '4px', 
+                boxShadow: '0 1px 3px rgba(0,0,0,0.12)', 
+                marginBottom: '24px'
+            }}>
+                <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between', 
+                    marginBottom: '16px'
+                }}>
+                    <ButtonStrip>
+                        <Button 
+                            onClick={handleFetchData}
+                            disabled={loading || schoolsLoading}
+                            icon={loading ? <CircularLoader small /> : null}
+                        >
+                            {loading ? (
+                                `Processing (${progress.processed}/${progress.total})`
+                            ) : 'Start Processing'}
+                        </Button>
+                    </ButtonStrip>
+
+                    <div style={{ 
+                        fontSize: '14px', 
+                        color: '#6E7A8A'
+                    }}>
+                        Active Overpass Instance: <span style={{ 
+                            fontFamily: 'monospace',
+                            color: '#1A72BB'
+                        }}>{new URL(activeInstance).hostname}</span>
+                    </div>
+                </div>
+
+                {error && (
+                    <NoticeBox error title="Error" style={{ marginBottom: '16px' }}>
+                        {error}
+                    </NoticeBox>
+                )}
+
+                <div style={{ marginBottom: '16px' }}>
+                    <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        fontSize: '14px', 
+                        color: '#6E7A8A',
+                        marginBottom: '4px'
+                    }}>
+                        <span>Progress</span>
+                        <span>{Math.round(progressPercent)}%</span>
+                    </div>
+                    <div style={{
+                        width: '100%',
+                        height: '8px',
+                        backgroundColor: '#e8edf2',
+                        borderRadius: '4px',
+                        overflow: 'hidden'
+                    }}>
+                        <div style={{
+                            width: `${progressPercent}%`,
+                            height: '100%',
+                            backgroundColor: '#1A72BB',
+                            transition: 'width 300ms ease'
+                        }} />
+                    </div>
+                </div>
+
+                {currentBatch.length > 0 && (
+                    <NoticeBox info title="Current Batch" style={{ marginBottom: '16px' }}>
+                        <ul style={{ 
+                            listStyleType: 'none', 
+                            padding: 0,
+                            margin: 0
+                        }}>
+                            {currentBatch.map((school, i) => (
+                                <li key={i} style={{ 
+                                    fontSize: '14px',
+                                    color: '#1A72BB',
+                                    marginBottom: '4px'
+                                }}>
+                                    {school}
+                                </li>
+                            ))}
+                        </ul>
+                    </NoticeBox>
+                )}
             </div>
-          </div>
-        )}
 
-        <div className="mb-4">
-          <div className="flex justify-between text-sm text-gray-600 mb-1">
-            <span>Progress</span>
-            <span>{Math.round((progress.processed / progress.total) * 100)}%</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2.5">
-            <div 
-              className="bg-blue-600 h-2.5 rounded-full" 
-              style={{ width: `${(progress.processed / progress.total) * 100}%` }}
-            ></div>
-          </div>
+            <Table>
+                <TableHead>
+                    <TableRow>
+                        <TableCell>School Name</TableCell>
+                        <TableCell>Closest Market</TableCell>
+                        <TableCell>Distance (km)</TableCell>
+                    </TableRow>
+                </TableHead>
+                <TableBody>
+                    {places.length > 0 ? (
+                        places.map((place) => (
+                            <TableRow key={place.id}>
+                                <TableCell>{place.school}</TableCell>
+                                <TableCell>{place.place}</TableCell>
+                                <TableCell>{place.distance}</TableCell>
+                            </TableRow>
+                        ))
+                    ) : (
+                        <TableRow>
+                            <TableCell colSpan="3" style={{ textAlign: 'center' }}>
+                                {loading ? (
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'center'
+                                    }}>
+                                        <CircularLoader small />
+                                        <span style={{ marginLeft: '8px' }}>Processing data...</span>
+                                    </div>
+                                ) : 'No results yet. Click "Start Processing" to begin.'}
+                            </TableCell>
+                        </TableRow>
+                    )}
+                </TableBody>
+            </Table>
         </div>
-
-        {currentBatch.length > 0 && (
-          <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
-            <h3 className="text-sm font-medium text-blue-800">Current Batch</h3>
-            <ul className="mt-2 space-y-1">
-              {currentBatch.map((school, i) => (
-                <li key={i} className="text-sm text-blue-700">{school}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">School</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Closest Place</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Distance (km)</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {places.length > 0 ? (
-                places.map((place, index) => (
-                  <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{place.school}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{place.place}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{place.distance.toFixed(2)}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="3" className="px-6 py-4 text-center text-sm text-gray-500">
-                    {loading ? 'Processing data...' : 'No results yet. Click "Start Processing" to begin.'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default ClosestPlaceFinder;
