@@ -13,7 +13,7 @@ const query = {
     },
 };
 
-const useFetchSchools = () => {
+export const useFetchSchools = () => {
     const [schools, setSchools] = useState([]); // Holds schools from the current page
     const [currentPage, setCurrentPage] = useState(1); // Tracks the current page
     const [hasMore, setHasMore] = useState(true); // Tracks if there are more pages

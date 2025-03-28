@@ -16,5 +16,5 @@ export const INITIAL_BATCH_SIZE = 5;
 export const BATCH_DELAY_MS = 1000;
 export const CACHE_TTL_MS = 3600000; // 1 hour
 export const SEARCH_RADIUS = 10000; //10km
-export const SEARCH_RADIUS_1 = 30000; //30km
-export const SEARCH_RADIUS_2 = 40000; //40km
+export const EXTENDED_RADIUS_1 = 30000; // 30km
+export const EXTENDED_RADIUS_2 = 40000; // 40km
