@@ -7,7 +7,7 @@ import { AmenitySelector } from '../components/AmenitySelector/AmenitySelector';
 import { ProgressTracker } from '../components/ProgressTracker/ProgressTracker';
 import { ResultsTable } from '../components/ResultsTable/ResultsTable';
 import { BatchStatus } from '../components/BatchStatus/BatchStatus';
-import './ClosestPlaceFinder.css';
+import './ClosestPlaceFinder.css'; // Regular CSS import (no default export needed)
 
 export const ClosestPlaceFinder = () => {
   const { schools, fetchNextPage, loading: schoolsLoading, hasMore } = useFetchSchools();
