@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { fetchNearbyAmenities } from '../utils/overpass';
 import { findClosestPlace } from '../utils/osrm';
-import { SEARCH_RADIUS, EXTENDED_RADIUS_1, EXTENDED_RADIUS_2 } from '../utils/constants';
+import { EXTENDED_RADIUS_1, EXTENDED_RADIUS_2 } from '../utils/constants';
 
 export const useOverpassApi = () => {
   const [loading, setLoading] = useState(false);
@@ -15,7 +15,7 @@ export const useOverpassApi = () => {
         amenityType
       );
 
-      if (amenities.length === 0) {
+      if (!amenities.length) {
         amenities = await fetchNearbyAmenities(
           school.geometry.coordinates[1],
           school.geometry.coordinates[0],
@@ -24,7 +24,7 @@ export const useOverpassApi = () => {
         );
       }
 
-      if (amenities.length === 0) {
+      if (!amenities.length) {
         amenities = await fetchNearbyAmenities(
           school.geometry.coordinates[1],
           school.geometry.coordinates[0],
@@ -33,10 +33,7 @@ export const useOverpassApi = () => {
         );
       }
 
-      if (amenities.length > 0) {
-        return await findClosestPlace(school, amenities, amenityType);
-      }
-      return null;
+      return amenities.length ? await findClosestPlace(school, amenities, amenityType) : null;
     } catch (err) {
       setError(err.message);
       return null;
