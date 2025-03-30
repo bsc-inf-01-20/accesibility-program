@@ -23,7 +23,11 @@ export const ClosestPlaceFinder = () => {
   
   const { processSchool, loading, error, setLoading } = useOverpassApi();
   const [places, setPlaces] = useState([]);
-  const [progress, setProgress] = useState({ processed: 0, total: 0 });
+  const [progress, setProgress] = useState({ 
+    processed: 0, 
+    total: 0,
+    remaining: 0 
+  });
   const [currentBatch, setCurrentBatch] = useState([]);
   const [selectedAmenity, setSelectedAmenity] = useState(AMENITY_TYPES.MARKET);
   const [actionTriggered, setActionTriggered] = useState(false);
@@ -39,7 +43,11 @@ export const ClosestPlaceFinder = () => {
     setActionTriggered(true);
     setLoading(true);
     setPlaces([]);
-    setProgress({ processed: 0, total: selectedSchools.length });
+    setProgress({ 
+      processed: 0, 
+      total: selectedSchools.length,
+      remaining: selectedSchools.length
+    });
 
     try {
       let dynamicBatchSize = INITIAL_BATCH_SIZE;
@@ -55,8 +63,9 @@ export const ClosestPlaceFinder = () => {
         
         setPlaces(prev => [...prev, ...results.filter(Boolean)]);
         setProgress(prev => ({
-          ...prev,
-          processed: Math.min(prev.total, i + dynamicBatchSize)
+          processed: i + dynamicBatchSize,
+          total: prev.total,
+          remaining: prev.total - (i + dynamicBatchSize)
         }));
 
         const processingTime = Date.now() - startTime;
@@ -128,12 +137,12 @@ export const ClosestPlaceFinder = () => {
             <ProgressTracker 
               processed={progress.processed} 
               total={progress.total} 
-              label={`Schools processed: ${progress.processed}/${progress.total}`}
+              label={`Processed: ${progress.processed}/${progress.total} (${progress.remaining} remaining)`}
             />
             {currentBatch.length > 0 && (
               <BatchStatus 
                 currentBatch={currentBatch} 
-                title="Currently processing:"
+                title={`Currently processing ${currentBatch.length} schools...`}
               />
             )}
           </>
@@ -146,31 +155,6 @@ export const ClosestPlaceFinder = () => {
         selectedAmenity={selectedAmenity} 
         schoolCount={selectedSchools.length}
       />
-
-      {/* Debug information */}
-      <div className="debug-info">
-        <h3>Current Selection</h3>
-        <p><strong>Selected Levels:</strong> {JSON.stringify(selectedLevels)}</p>
-        <p><strong>Deepest Selected Level:</strong> {deepestSelectedLevel}</p>
-        <p><strong>Selected Unit:</strong> {
-          allUnits.find(u => u.id === selectedLevels[deepestSelectedLevel])?.displayName || 'None'
-        } (ID: {selectedLevels[deepestSelectedLevel] || 'None'})</p>
-        <p><strong>Schools in Selection:</strong> {selectedSchools.length}</p>
-        {selectedSchools.length > 0 && (
-          <div>
-            <p><strong>Sample Schools:</strong></p>
-            <ul>
-              {selectedSchools.slice(0, 3).map(school => (
-                <li key={school.id}>
-                  {school.displayName} (ID: {school.id}, Parent: {
-                    allUnits.find(u => u.id === school.parent?.id)?.displayName || 'None'
-                  })
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
     </div>
   );
 };
