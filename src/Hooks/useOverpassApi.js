@@ -8,37 +8,37 @@ export const useOverpassApi = () => {
   const [error, setError] = useState(null);
 
   const processSchool = async (school, amenityType) => {
+    if (!school?.geometry?.coordinates) {
+      console.error('School missing coordinates:', school.displayName);
+      return null;
+    }
+
     try {
-      let amenities = await fetchNearbyAmenities(
-        school.geometry.coordinates[1],
-        school.geometry.coordinates[0],
-        amenityType
-      );
+      const [lon, lat] = school.geometry.coordinates;
+      console.log(`Processing school: ${school.displayName} @ ${lon},${lat}`);
 
+      let amenities = await fetchNearbyAmenities(lat, lon, amenityType);
       if (!amenities.length) {
-        amenities = await fetchNearbyAmenities(
-          school.geometry.coordinates[1],
-          school.geometry.coordinates[0],
-          amenityType,
-          0, 0, EXTENDED_RADIUS_1
-        );
+        amenities = await fetchNearbyAmenities(lat, lon, amenityType, 0, 0, EXTENDED_RADIUS_1);
+      }
+      if (!amenities.length) {
+        amenities = await fetchNearbyAmenities(lat, lon, amenityType, 0, 0, EXTENDED_RADIUS_2);
       }
 
-      if (!amenities.length) {
-        amenities = await fetchNearbyAmenities(
-          school.geometry.coordinates[1],
-          school.geometry.coordinates[0],
-          amenityType,
-          0, 0, EXTENDED_RADIUS_2
-        );
-      }
+      if (!amenities.length) return null;
 
-      return amenities.length ? await findClosestPlace(school, amenities, amenityType) : null;
+      return await findClosestPlace(school, amenities, amenityType);
     } catch (err) {
+      console.error('Process error:', err);
       setError(err.message);
       return null;
     }
   };
 
-  return { processSchool, loading, error, setLoading };
+  return { 
+    processSchool, 
+    loading, 
+    error, 
+    setLoading 
+  };
 };

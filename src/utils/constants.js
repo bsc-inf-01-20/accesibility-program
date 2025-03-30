@@ -11,7 +11,7 @@ export const OVERPASS_INSTANCES = [
   'https://z.overpass-api.de/api/interpreter'
 ];
 
-export const OSRM_URL = "http://localhost:5000/route/v1/walking";
+export const OSRM_URL = "http://localhost:5000";
 export const INITIAL_BATCH_SIZE = 5;
 export const BATCH_DELAY_MS = 1000;
 export const CACHE_TTL_MS = 3600000; // 1 hour

@@ -1,109 +1,54 @@
 import { OSRM_URL } from "./constants";
 
 export const findClosestPlace = async (school, places, amenityType) => {
-  console.group(`Processing school: ${school.displayName}`);
-  console.log('School coordinates:', school.geometry.coordinates);
-  console.log('Places found:', places);
-
-  if (!school || !school.geometry || !school.geometry.coordinates) {
-    console.error('Invalid school data:', school);
-    console.groupEnd();
-    return null;
-  }
-
-  if (!places || !Array.isArray(places) || places.length === 0) {
-    console.log(`No ${amenityType?.label?.toLowerCase() || 'amenities'} found`);
-    console.groupEnd();
-    return null;
-  }
-
+  console.group(`[OSRM] School: ${school.displayName}`);
+  const [startLon, startLat] = school.geometry.coordinates;
+  
   try {
-    const [startLon, startLat] = school.geometry.coordinates;
+    if (!places.length) return null;
     
-    console.log('All candidate places:');
-    places.forEach((p, i) => {
-      console.log(`#${i}: ${p.name || 'Unnamed'} @ ${p.lat},${p.lon}`);
-    });
-
-    const destinations = places
-      .filter(p => p?.lon !== undefined && p?.lat !== undefined)
-      .map(p => `${p.lon},${p.lat}`)
-      .join(';');
-
-    if (!destinations) {
-      console.error('No valid destinations found', places);
-      console.groupEnd();
-      return null;
-    }
-
-    const osrmQuery = `${OSRM_URL}/${startLon},${startLat};${destinations}?overview=false`;
+    // Construct coordinates string
+    const destinations = places.map(p => `${p.lon},${p.lat}`).join(';');
+    const coordinates = `${startLon},${startLat};${destinations}`;
+    
+    // Use the table service
+    const osrmQuery = `${OSRM_URL}/table/v1/walking/${coordinates}?sources=0&annotations=distance`;
+    
     console.log('OSRM Query:', osrmQuery);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const response = await fetch(osrmQuery);
+    const data = await response.json();
+    
+    if (data.code !== 'Ok') throw new Error('Invalid OSRM response');
+    if (!data.distances?.[0]) throw new Error('No distances found');
 
-    try {
-      const response = await fetch(osrmQuery, {
-        signal: controller.signal,
-        headers: { 'Accept': 'application/json' }
-      });
+    // Process distances
+    const distancesFromSource = data.distances[0].slice(1); // Skip self-distance
+    const distances = places.map((place, i) => ({
+      place,
+      distance: distancesFromSource[i] / 1000 // Convert to km
+    }));
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('OSRM error response:', errorText);
-        console.groupEnd();
-        return null;
+    const validDistances = distances.filter(d => d.distance && isFinite(d.distance));
+    if (!validDistances.length) return null;
+
+    const closest = validDistances.reduce((min, curr) => 
+      curr.distance < min.distance ? curr : min
+    );
+
+    return {
+      school: school.displayName,
+      place: closest.place.name,
+      distance: closest.distance.toFixed(2),
+      rawData: {
+        schoolCoords: [startLon, startLat],
+        placeCoords: [closest.place.lon, closest.place.lat]
       }
-
-      const data = await response.json();
-      console.log('Full OSRM response:', data);
-
-      if (data.code !== 'Ok' || !data.routes?.[0]?.legs) {
-        console.warn('Invalid OSRM response structure:', data);
-        console.groupEnd();
-        return null;
-      }
-
-      const distances = data.routes[0].legs.map((leg, index) => ({
-        place: places[index]?.name || `Unnamed ${amenityType?.label || 'Location'}`,
-        distance: leg.distance / 1000,
-        coordinates: `${places[index]?.lat},${places[index]?.lon}`,
-        duration: leg.duration / 60,
-        index: index
-      }));
-
-      console.log('All distances calculated:');
-      distances.forEach(d => {
-        console.log(`Place ${d.index}: ${d.place} - ${d.distance.toFixed(2)} km`);
-      });
-
-      distances.sort((a, b) => a.distance - b.distance);
-      const closest = distances[0];
-      
-      console.log('Closest place selected:', closest);
-      
-      const result = {
-        school: school.displayName,
-        place: closest?.place,
-        distance: closest?.distance.toFixed(2),
-        amenityType: amenityType?.label,
-        id: `${school.displayName}-${Date.now()}`,
-        rawData: {
-          schoolCoords: school.geometry.coordinates,
-          placeCoords: closest ? [places[closest.index].lon, places[closest.index].lat] : null,
-          allDistances: distances
-        }
-      };
-
-      console.log('Final result:', result);
-      console.groupEnd();
-      return result;
-    } finally {
-      clearTimeout(timeout);
-    }
+    };
   } catch (err) {
-    console.error(`Error processing ${school.displayName}:`, err);
-    console.groupEnd();
+    console.error('OSRM Error:', err);
     return null;
+  } finally {
+    console.groupEnd();
   }
 };

@@ -1,7 +1,6 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useDataQuery } from "@dhis2/app-runtime";
 
-// Defined outside the hook
 const ORG_UNITS_QUERY = {
   orgUnits: {
     resource: "organisationUnits",
@@ -39,14 +38,18 @@ export const useFetchSchools = () => {
   const { refetch: refetchOrgUnits } = useDataQuery(ORG_UNITS_QUERY, {
     lazy: true,
     onComplete: (data) => {
-      if (data?.orgUnits?.organisationUnits) {
-        setAllUnits(prev => [
-          ...prev.filter(u => !data.orgUnits.organisationUnits.some(newU => newU.id === u.id)),
-          ...data.orgUnits.organisationUnits
-        ]);
-      }
+      console.log('Fetched org units:', data.orgUnits.organisationUnits.length);
+      data.orgUnits.organisationUnits.forEach(unit => {
+        console.debug(`Unit ${unit.displayName} coords:`, unit.geometry?.coordinates);
+      });
+      
+      setAllUnits(prev => [
+        ...prev.filter(u => !data.orgUnits.organisationUnits.some(newU => newU.id === u.id)),
+        ...data.orgUnits.organisationUnits
+      ]);
     },
     onError: (error) => {
+      console.error('Error loading org units:', error);
       setError(error.message || "Failed to load org units");
     }
   });
@@ -55,16 +58,35 @@ export const useFetchSchools = () => {
     lazy: true,
     onComplete: (data) => {
       const schools = data?.schools?.organisationUnits || [];
+      console.log('Fetched schools:', schools.length);
+      schools.forEach(school => {
+        console.debug(`School ${school.displayName} coords:`, school.geometry?.coordinates);
+      });
+      
       setAllSchools(schools);
       setAllUnits(prev => [...prev, ...schools]);
     },
     onError: (error) => {
+      console.error('Error loading schools:', error);
       setError(error.message || "Failed to load schools");
     }
   });
 
   useEffect(() => {
+    console.log('Checking for schools with invalid coordinates');
+    const invalidSchools = allSchools.filter(
+      school => !school?.geometry?.coordinates
+    );
+    if (invalidSchools.length > 0) {
+      console.warn('Schools missing coordinates:', 
+        invalidSchools.map(s => s.displayName)
+      );
+    }
+  }, [allSchools]);
+
+  useEffect(() => {
     if (!selectedLevels[1]) {
+      console.log('Initializing with ministry level');
       setSelectedLevels({ 1: MINISTRY_ID });
       fetchOrgUnits(2, MINISTRY_ID);
     }
@@ -73,6 +95,7 @@ export const useFetchSchools = () => {
 
   useEffect(() => {
     if (allSchools.length > 0 && Object.keys(selectedLevels).length > 0) {
+      console.log('Filtering schools based on selected levels');
       const deepestLevel = Math.max(...Object.keys(selectedLevels).map(Number));
       const rootId = selectedLevels[deepestLevel];
       
@@ -87,11 +110,13 @@ export const useFetchSchools = () => {
         return false;
       });
       
+      console.log(`Filtered to ${filtered.length} schools`);
       setFilteredSchools(filtered);
     }
   }, [selectedLevels, allSchools, allUnits]);
 
   const fetchOrgUnits = useCallback(async (level, parentId = null) => {
+    console.log(`Fetching org units for level ${level}, parent ${parentId}`);
     setLoading(true);
     setError(null);
     try {
@@ -105,6 +130,7 @@ export const useFetchSchools = () => {
   }, [refetchOrgUnits]);
 
   const handleSelectLevel = useCallback(async (level, orgUnitId) => {
+    console.log(`Selected level ${level}: ${orgUnitId}`);
     const newLevels = { ...selectedLevels, [level]: orgUnitId };
     
     for (let l = level + 1; l <= 5; l++) delete newLevels[l];
