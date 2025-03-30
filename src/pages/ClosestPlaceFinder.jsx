@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button, ButtonStrip, NoticeBox } from '@dhis2/ui';
 import { useFetchSchools } from '../Hooks/useFetchSchools';
 import { useOverpassApi } from '../Hooks/useOverpassApi';
@@ -13,7 +13,7 @@ import './ClosestPlaceFinder.css';
 export const ClosestPlaceFinder = () => {
   const { 
     selectedLevels,
-    allUnits = [], // Destructure with default
+    allUnits = [],
     loading: schoolsLoading,
     error: schoolsError,
     handleSelectLevel,
@@ -27,36 +27,53 @@ export const ClosestPlaceFinder = () => {
   const [selectedAmenity, setSelectedAmenity] = useState(AMENITY_TYPES.MARKET);
   const [selectedSchools, setSelectedSchools] = useState([]);
 
-  // Add the safety check here
+  const deepestSelectedLevel = useMemo(() => {
+    const levels = Object.keys(selectedLevels).map(Number);
+    return levels.length ? Math.max(...levels) : 0;
+  }, [selectedLevels]);
+
   useEffect(() => {
+    const getHierarchyPath = (school) => {
+      const path = [];
+      let current = allUnits.find(u => u.id === school.id);
+      while (current?.parent?.id) {
+        path.push(current.parent.id);
+        current = allUnits.find(u => u.id === current.parent.id);
+      }
+      return path;
+    };
+
+    const levels = Object.keys(selectedLevels).map(Number);
+    const deepestLevel = levels.length ? Math.max(...levels) : 1;
+    const rootId = selectedLevels[deepestLevel] || "U7ahfMlCl7k";
+
     const schools = (allUnits || [])
       .filter(unit => 
-        unit.level === 5 && 
-        unit.geometry?.type === "Point"
+        unit.level === 5 &&
+        unit.geometry?.type === "Point" &&
+        getHierarchyPath(unit).includes(rootId)
       );
-      
+
     setSelectedSchools(schools);
     setProgress(prev => ({ ...prev, total: schools.length }));
-  }, [allUnits]);
+  }, [allUnits, selectedLevels]);
 
-  // Rest of the component remains the same
   const handleFetchData = async () => {
-    if (loading || !selectedSchools.length) return;
-  
+    if (loading) return;
+
     setLoading(true);
     setPlaces([]);
     setProgress({ processed: 0, total: selectedSchools.length });
-  
+
     try {
       let dynamicBatchSize = INITIAL_BATCH_SIZE;
-  
+
       for (let i = 0; i < selectedSchools.length; i += dynamicBatchSize) {
         const batch = selectedSchools.slice(i, i + dynamicBatchSize);
         setCurrentBatch(batch.map(s => s.displayName));
-  
+
         const startTime = Date.now();
         const results = await Promise.all(
-          // Fixed this line - removed extra parenthesis
           batch.map(school => processSchool(school, selectedAmenity))
         );
         
@@ -66,14 +83,14 @@ export const ClosestPlaceFinder = () => {
           ...prev,
           processed: Math.min(prev.total, i + dynamicBatchSize)
         }));
-  
+
         const processingTime = Date.now() - startTime;
         if (processingTime < 1000 && dynamicBatchSize < 10) {
           dynamicBatchSize = Math.min(dynamicBatchSize + 1, 10);
         } else if (processingTime > 3000 && dynamicBatchSize > 2) {
           dynamicBatchSize = Math.max(dynamicBatchSize - 1, 2);
         }
-  
+
         if (i + dynamicBatchSize < selectedSchools.length) {
           await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
         }
@@ -114,7 +131,7 @@ export const ClosestPlaceFinder = () => {
           <ButtonStrip>
             <Button 
               onClick={handleFetchData}
-              disabled={loading || schoolsLoading || !selectedSchools.length}
+              disabled={loading || schoolsLoading || deepestSelectedLevel < 2}
               primary
             >
               {loading ? 'Processing...' : 'Find Closest Amenities'}
