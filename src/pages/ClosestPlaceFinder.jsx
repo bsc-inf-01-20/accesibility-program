@@ -13,7 +13,8 @@ import './ClosestPlaceFinder.css';
 export const ClosestPlaceFinder = () => {
   const { 
     selectedLevels,
-    allUnits = [],
+    allUnits,
+    selectedSchools,
     loading: schoolsLoading,
     error: schoolsError,
     handleSelectLevel,
@@ -22,45 +23,20 @@ export const ClosestPlaceFinder = () => {
   
   const { processSchool, loading, error, setLoading } = useOverpassApi();
   const [places, setPlaces] = useState([]);
-  const [progress, setProgress] = useState({ processed: 0, total: 1 });
+  const [progress, setProgress] = useState({ processed: 0, total: 0 });
   const [currentBatch, setCurrentBatch] = useState([]);
   const [selectedAmenity, setSelectedAmenity] = useState(AMENITY_TYPES.MARKET);
-  const [selectedSchools, setSelectedSchools] = useState([]);
+  const [actionTriggered, setActionTriggered] = useState(false);
 
   const deepestSelectedLevel = useMemo(() => {
     const levels = Object.keys(selectedLevels).map(Number);
     return levels.length ? Math.max(...levels) : 0;
   }, [selectedLevels]);
 
-  useEffect(() => {
-    const getHierarchyPath = (school) => {
-      const path = [];
-      let current = allUnits.find(u => u.id === school.id);
-      while (current?.parent?.id) {
-        path.push(current.parent.id);
-        current = allUnits.find(u => u.id === current.parent.id);
-      }
-      return path;
-    };
-
-    const levels = Object.keys(selectedLevels).map(Number);
-    const deepestLevel = levels.length ? Math.max(...levels) : 1;
-    const rootId = selectedLevels[deepestLevel] || "U7ahfMlCl7k";
-
-    const schools = (allUnits || [])
-      .filter(unit => 
-        unit.level === 5 &&
-        unit.geometry?.type === "Point" &&
-        getHierarchyPath(unit).includes(rootId)
-      );
-
-    setSelectedSchools(schools);
-    setProgress(prev => ({ ...prev, total: schools.length }));
-  }, [allUnits, selectedLevels]);
-
   const handleFetchData = async () => {
-    if (loading) return;
+    if (loading || selectedSchools.length === 0) return;
 
+    setActionTriggered(true);
     setLoading(true);
     setPlaces([]);
     setProgress({ processed: 0, total: selectedSchools.length });
@@ -78,18 +54,15 @@ export const ClosestPlaceFinder = () => {
         );
         
         setPlaces(prev => [...prev, ...results.filter(Boolean)]);
-        
         setProgress(prev => ({
           ...prev,
           processed: Math.min(prev.total, i + dynamicBatchSize)
         }));
 
         const processingTime = Date.now() - startTime;
-        if (processingTime < 1000 && dynamicBatchSize < 10) {
-          dynamicBatchSize = Math.min(dynamicBatchSize + 1, 10);
-        } else if (processingTime > 3000 && dynamicBatchSize > 2) {
-          dynamicBatchSize = Math.max(dynamicBatchSize - 1, 2);
-        }
+        dynamicBatchSize = processingTime < 1000 ? 
+          Math.min(dynamicBatchSize + 1, 10) : 
+          Math.max(dynamicBatchSize - 1, 2);
 
         if (i + dynamicBatchSize < selectedSchools.length) {
           await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
@@ -131,7 +104,7 @@ export const ClosestPlaceFinder = () => {
           <ButtonStrip>
             <Button 
               onClick={handleFetchData}
-              disabled={loading || schoolsLoading || deepestSelectedLevel < 2}
+              disabled={loading || schoolsLoading || deepestSelectedLevel < 2 || selectedSchools.length === 0}
               primary
             >
               {loading ? 'Processing...' : 'Find Closest Amenities'}
@@ -140,19 +113,30 @@ export const ClosestPlaceFinder = () => {
 
           {schoolsError && <NoticeBox error title="Error">{schoolsError}</NoticeBox>}
           {error && <NoticeBox error title="Error">{error}</NoticeBox>}
+          {actionTriggered && selectedSchools.length === 0 && (
+            <NoticeBox warning title="Notice">
+              {deepestSelectedLevel === 5 ? 
+                'Selected school not found or missing location data' :
+                `No schools found under ${allUnits.find(u => u.id === selectedLevels[deepestSelectedLevel])?.displayName || 'selected area'}`
+              }
+            </NoticeBox>
+          )}
         </div>
 
-        <ProgressTracker 
-          processed={progress.processed} 
-          total={progress.total} 
-          label={`Schools processed: ${progress.processed}/${progress.total}`}
-        />
-
-        {currentBatch.length > 0 && (
-          <BatchStatus 
-            currentBatch={currentBatch} 
-            title="Currently processing:"
-          />
+        {progress.total > 0 && (
+          <>
+            <ProgressTracker 
+              processed={progress.processed} 
+              total={progress.total} 
+              label={`Schools processed: ${progress.processed}/${progress.total}`}
+            />
+            {currentBatch.length > 0 && (
+              <BatchStatus 
+                currentBatch={currentBatch} 
+                title="Currently processing:"
+              />
+            )}
+          </>
         )}
       </div>
 
@@ -162,6 +146,31 @@ export const ClosestPlaceFinder = () => {
         selectedAmenity={selectedAmenity} 
         schoolCount={selectedSchools.length}
       />
+
+      {/* Debug information */}
+      <div className="debug-info">
+        <h3>Current Selection</h3>
+        <p><strong>Selected Levels:</strong> {JSON.stringify(selectedLevels)}</p>
+        <p><strong>Deepest Selected Level:</strong> {deepestSelectedLevel}</p>
+        <p><strong>Selected Unit:</strong> {
+          allUnits.find(u => u.id === selectedLevels[deepestSelectedLevel])?.displayName || 'None'
+        } (ID: {selectedLevels[deepestSelectedLevel] || 'None'})</p>
+        <p><strong>Schools in Selection:</strong> {selectedSchools.length}</p>
+        {selectedSchools.length > 0 && (
+          <div>
+            <p><strong>Sample Schools:</strong></p>
+            <ul>
+              {selectedSchools.slice(0, 3).map(school => (
+                <li key={school.id}>
+                  {school.displayName} (ID: {school.id}, Parent: {
+                    allUnits.find(u => u.id === school.parent?.id)?.displayName || 'None'
+                  })
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
