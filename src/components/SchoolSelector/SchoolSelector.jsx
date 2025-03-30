@@ -1,122 +1,166 @@
-import React, { useState, useMemo } from 'react';
-import PropTypes from 'prop-types';
-import { 
-  Menu, 
-  MenuItem, 
-  Button,
-  CircularLoader,
-  Help
-} from '@dhis2/ui';
+import React, { useState, useEffect, useMemo } from 'react';
 import './SchoolSelector.css';
 
-export const SchoolSelector = ({ 
-  selectedLevels = {},
-  currentLevelUnits = [],
-  loading = false,
-  error = null,
-  handleSelectLevel = () => console.error('handleSelectLevel not provided'),
-  clearSelection = () => {}
-}) => {
-  const [expandedLevels, setExpandedLevels] = useState({});
+export function SchoolSelector({ 
+  selectedLevels,
+  allUnits = [],
+  loading,
+  error,
+  handleSelectLevel,
+  fetchOrgUnits
+}) {
+  const [expandedItems, setExpandedItems] = useState({});
+  const [isOpen, setIsOpen] = useState(false);
 
-  // Organize units by level and parent
-  const { unitsByLevel, childUnitsMap } = useMemo(() => {
-    const result = { unitsByLevel: {}, childUnitsMap: {} };
+  // Toggle dropdown visibility
+  const toggleDropdown = (e) => {
+    e.stopPropagation();
+    setIsOpen(prev => !prev);
+  };
 
-    currentLevelUnits.forEach(unit => {
-      if (!unit) return;
+  // Safe hierarchy building
+  const hierarchy = useMemo(() => {
+    const getChildren = (parentId, level) => 
+      (allUnits || []).filter(u => 
+        u?.level === level && 
+        u.parent?.id === parentId
+      );
 
-      // Group by level
-      if (!result.unitsByLevel[unit.level]) {
-        result.unitsByLevel[unit.level] = [];
-      }
-      result.unitsByLevel[unit.level].push(unit);
+    try {
+      return getChildren(selectedLevels[1], 2).map(division => ({
+        ...division,
+        districts: getChildren(division?.id, 3).map(district => ({
+          ...district,
+          zones: getChildren(district?.id, 4).map(zone => ({
+            ...zone,
+            schools: getChildren(zone?.id, 5)
+          }))
+        }))
+      }));
+    } catch (error) {
+      console.error("Hierarchy building failed:", error);
+      return [];
+    }
+  }, [allUnits, selectedLevels]);
 
-      // Map children to parents
-      if (unit.parent?.id) {
-        result.childUnitsMap[unit.parent.id] = [
-          ...(result.childUnitsMap[unit.parent.id] || []),
-          unit
-        ];
+  // Auto-expand logic
+  useEffect(() => {
+    const newExpanded = {...expandedItems};
+    let changed = false;
+
+    // Auto-expand parents when children exist
+    const levelsToCheck = [
+      { level: 2, childLevel: 3 },
+      { level: 3, childLevel: 4 },
+      { level: 4, childLevel: 5 }
+    ];
+
+    levelsToCheck.forEach(({ level, childLevel }) => {
+      const parentId = selectedLevels[level];
+      if (parentId && (allUnits || []).some(u => 
+        u.level === childLevel && 
+        u.parent?.id === parentId
+      )) {
+        if (!newExpanded[parentId]) {
+          newExpanded[parentId] = true;
+          changed = true;
+        }
       }
     });
 
-    return result;
-  }, [currentLevelUnits]);
+    if (changed) setExpandedItems(newExpanded);
+  }, [allUnits, selectedLevels]);
 
-  // Toggle expansion
-  const toggleLevel = (level) => {
-    setExpandedLevels(prev => ({ ...prev, [level]: !prev[level] }));
+  const handleSelect = (level, id, e) => {
+    e.stopPropagation();
+    
+    // Handle school selection (level 5)
+    if (level === 5) {
+      setIsOpen(false);
+      return handleSelectLevel(level, id);
+    }
+
+    // Toggle expansion for non-school levels
+    const shouldExpand = !expandedItems[id];
+    setExpandedItems(prev => ({ ...prev, [id]: shouldExpand }));
+
+    // Fetch next level if needed
+    if (shouldExpand && level < 5) {
+      handleSelectLevel(level, id);
+    }
   };
 
-  // Handle selection
-  const handleSelect = (level, id) => {
-    handleSelectLevel(level, id);
-    if (level < 4) toggleLevel(id);
+  const getSelectedText = () => {
+    const getDisplayName = (level) => 
+      (allUnits || []).find(u => u.id === selectedLevels[level])?.displayName;
+
+    return getDisplayName(5) || 
+           getDisplayName(4) || 
+           getDisplayName(3) || 
+           getDisplayName(2) || 
+           'Select division';
   };
+
+  const renderTree = (items, level) => (items || []).map(item => (
+    <div key={item.id}>
+      <div 
+        className={`dropdown-item level-${level} ${selectedLevels[level] === item.id ? 'selected' : ''}`}
+        onClick={(e) => handleSelect(level, item.id, e)}
+      >
+        <span className="expand-arrow">
+          {(item.districts?.length || item.zones?.length || item.schools?.length) ? 
+            (expandedItems[item.id] ? '▼' : '▶') : ' '}
+        </span>
+        {item.displayName}
+      </div>
+      
+      {expandedItems[item.id] && (
+        <div className="dropdown-children">
+          {item.districts?.length > 0 && renderTree(item.districts, 3)}
+          {item.zones?.length > 0 && renderTree(item.zones, 4)}
+          {item.schools?.length > 0 && renderTree(item.schools, 5)}
+        </div>
+      )}
+    </div>
+  ));
 
   return (
-    <div className="school-selector">
-      {[2, 3, 4].map(level => (
-        <div key={level} className="level-container">
-          <h4>Level {level}</h4>
+    <div className="school-selector-container">
+      <div className="selector-header" onClick={toggleDropdown}>
+        {getSelectedText()}
+        <span className={`dropdown-arrow ${isOpen ? 'open' : ''}`}>▼</span>
+      </div>
+
+      {isOpen && (
+        <div className="dropdown-menu">
+          {loading && <div className="dropdown-loading">Loading data...</div>}
+          {error && (
+            <div className="dropdown-error">
+              {error}
+              <button 
+                onClick={() => fetchOrgUnits(2, "U7ahfMlCl7k")} 
+                className="refresh-button"
+              >
+                Retry
+              </button>
+            </div>
+          )}
           
-          {loading ? (
-            <CircularLoader small />
-          ) : error ? (
-            <Help error>Load failed</Help>
-          ) : (
-            <Menu>
-              {(unitsByLevel[level] || []).map(unit => (
-                <React.Fragment key={unit.id}>
-                  <MenuItem
-                    label={unit.displayName}
-                    active={selectedLevels[level] === unit.id}
-                    onClick={() => handleSelect(level, unit.id)}
-                    icon={
-                      level < 4 && (childUnitsMap[unit.id]?.length > 0) ? 
-                      (expandedLevels[unit.id] ? '▼' : '▶') : null
-                    }
-                  />
-                  
-                  {level < 4 && expandedLevels[unit.id] && (
-                    <div className="child-units">
-                      {(childUnitsMap[unit.id] || []).map(child => (
-                        <MenuItem
-                          key={child.id}
-                          label={child.displayName}
-                          active={selectedLevels[level+1] === child.id}
-                          onClick={() => handleSelect(level+1, child.id)}
-                          inset
-                        />
-                      ))}
-                    </div>
-                  )}
-                </React.Fragment>
-              ))}
-            </Menu>
+          {!loading && !error && (hierarchy || []).length === 0 && (
+            <div className="dropdown-empty">
+              No data found
+              <button 
+                onClick={() => fetchOrgUnits(2, "U7ahfMlCl7k")} 
+                className="refresh-button"
+              >
+                Refresh
+              </button>
+            </div>
           )}
 
-          {selectedLevels[level] && (
-            <Button 
-              small 
-              destructive 
-              onClick={() => clearSelection(level)}
-            >
-              Clear
-            </Button>
-          )}
+          {renderTree(hierarchy, 2)}
         </div>
-      ))}
+      )}
     </div>
   );
-};
-
-SchoolSelector.propTypes = {
-  selectedLevels: PropTypes.object.isRequired,
-  currentLevelUnits: PropTypes.array.isRequired,
-  loading: PropTypes.bool,
-  error: PropTypes.object,
-  handleSelectLevel: PropTypes.func.isRequired,
-  clearSelection: PropTypes.func.isRequired
-};
+}

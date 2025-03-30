@@ -1,84 +1,81 @@
 import { useState, useCallback, useEffect } from "react";
 import { useDataQuery } from "@dhis2/app-runtime";
 
-const query = {
-    schools: {
-        resource: "organisationUnits",
-        params: (variables) => ({
-            fields: "displayName,geometry",
-            page: variables.page,
-            pageSize: 50,
-            paging: true,
-        }),
-    },
+const ORG_UNITS_QUERY = {
+  orgUnits: {
+    resource: "organisationUnits",
+    params: ({ level, parentId }) => ({
+      fields: "id,displayName,level,parent[id,displayName]",
+      filter: [
+        `level:eq:${level}`,
+        parentId ? `parent.id:eq:${parentId}` : undefined
+      ].filter(Boolean),
+      pageSize: 1000,
+      totalPages: true
+    }),
+  },
 };
 
 export const useFetchSchools = () => {
-    const [schools, setSchools] = useState([]); // Holds schools from the current page
-    const [currentPage, setCurrentPage] = useState(1); // Tracks the current page
-    const [hasMore, setHasMore] = useState(true); // Tracks if there are more pages
-    const [loading, setLoading] = useState(false); // Tracks loading state
-    const [error, setError] = useState(null); // Tracks errors
+  const [allUnits, setAllUnits] = useState([]);
+  const [selectedLevels, setSelectedLevels] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const MINISTRY_ID = "U7ahfMlCl7k";
 
-    const { refetch } = useDataQuery(query, { lazy: true });
+  const { refetch } = useDataQuery(ORG_UNITS_QUERY, {
+    lazy: true,
+    onComplete: (data) => {
+      if (data?.orgUnits?.organisationUnits) {
+        setAllUnits(prev => [
+          ...prev.filter(u => !data.orgUnits.organisationUnits.some(newU => newU.id === u.id)),
+          ...data.orgUnits.organisationUnits
+        ]);
+      }
+    },
+    onError: (error) => {
+      setError(error.message || "Failed to load data");
+    }
+  });
 
-    const fetchNextPage = useCallback(() => {
-        // Fetch schools from the next page only when processing is done
-        if (!hasMore || loading) return; // Ensure valid conditions for fetching
-        setLoading(true); // Start loading
+  useEffect(() => {
+    if (!selectedLevels[1]) {
+      setSelectedLevels({ 1: MINISTRY_ID });
+      fetchOrgUnits(2, MINISTRY_ID);
+    }
+  }, []);
 
-        refetch({ page: currentPage })
-            .then((data) => {
-                console.log("Raw API Response:", data); // Log raw response for debugging
+  const fetchOrgUnits = useCallback(async (level, parentId = null) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await refetch({ level, parentId });
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [refetch]);
 
-                if (!data || typeof data !== "object") {
-                    throw new Error("Invalid response from DHIS2 API.");
-                }
+  const handleSelectLevel = useCallback(async (level, orgUnitId) => {
+    const newLevels = { ...selectedLevels, [level]: orgUnitId };
+    
+    // Clear lower levels
+    for (let l = level + 1; l <= 5; l++) delete newLevels[l];
+    
+    setSelectedLevels(newLevels);
+    
+    // Fetch next level
+    if (level < 5) await fetchOrgUnits(level + 1, orgUnitId);
+  }, [selectedLevels, fetchOrgUnits]);
 
-                const schoolsData = data.schools;
-                if (!schoolsData || typeof schoolsData !== "object") {
-                    throw new Error("Invalid data structure: schools is missing or not an object.");
-                }
-
-                const organisationUnits = schoolsData.organisationUnits || [];
-                if (!Array.isArray(organisationUnits)) {
-                    throw new Error("organisationUnits is missing or not an array.");
-                }
-
-                const pointsOnly = organisationUnits.filter(
-                    (school) => school.geometry && school.geometry.type === "Point"
-                );
-
-                setSchools(pointsOnly); // Replace schools with the new page's data
-
-                if (!schoolsData.pager?.nextPage) {
-                    setHasMore(false); // No more pages available
-                } else {
-                    setCurrentPage((prev) => prev + 1); // Move to the next page
-                }
-            })
-            .catch((err) => {
-                setError(err);
-                console.error("Error fetching schools:", err);
-            })
-            .finally(() => {
-                setLoading(false); // Stop loading
-            });
-    }, [currentPage, hasMore, loading, refetch]);
-
-    useEffect(() => {
-        if (schools.length === 0 && hasMore) {
-            fetchNextPage(); // Automatically fetch the first page
-        }
-    }, [schools.length, fetchNextPage, hasMore]);
-
-    return {
-        schools, // Holds schools only from the current page
-        loading, // Indicates fetch state
-        error, // Tracks any errors during fetch
-        hasMore, // Tracks whether more pages exist
-        fetchNextPage, // Function to fetch the next page of schools
-    };
+  return {
+    selectedLevels,
+    allUnits: allUnits || [], // Ensure array output
+    loading,
+    error,
+    handleSelectLevel,
+    fetchOrgUnits
+  };
 };
-
-export default useFetchSchools;
