@@ -1,21 +1,31 @@
 {
-  "name": "accesibility-program",
+  "name": "accessibility-program",
   "version": "1.0.0",
-  "description": "",
+  "description": "DHIS2 application for analyzing school accessibility",
   "license": "BSD-3-Clause",
   "private": true,
   "scripts": {
     "build": "d2-app-scripts build",
     "start": "d2-app-scripts start --proxy https://emis.ccdev.org/dev",
     "test": "d2-app-scripts test",
-    "deploy": "d2-app-scripts deploy"
+    "deploy": "d2-app-scripts deploy",
+    "format": "prettier --write src/**/*.{js,jsx,json,css}",
+    "lint": "eslint src"
   },
   "devDependencies": {
-    "@dhis2/cli-app-scripts": "^12.3.0"
+    "@dhis2/cli-app-scripts": "^12.3.0",
+    "@types/react-router-dom": "^5.3.3",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react": "^7.33.2",
+    "prettier": "^3.2.5"
   },
   "dependencies": {
     "@dhis2/app-runtime": "^3.14.0",
-    "@types/react": "^19.0.12",
-    "@types/react-dom": "^19.0.4"
+    "@dhis2/ui": "^10.5.1",
+    "prop-types": "^15.8.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.1"
   }
 }
