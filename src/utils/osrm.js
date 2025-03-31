@@ -1,34 +1,33 @@
 import { OSRM_URL } from "./constants";
 
 export const findClosestPlace = async (school, places, amenityType) => {
-  console.group(`[OSRM] School: ${school.displayName}`);
-  const [startLon, startLat] = school.geometry.coordinates;
-  
+  const [lon, lat] = school.geometry.coordinates;
+  console.log(`\n=== Processing School: ${school.displayName} @ ${lon},${lat} ===`);
+
+  if (!places.length) {
+    console.log('No amenities found for this school');
+    return null;
+  }
+
   try {
-    if (!places.length) return null;
-    
-    // Construct coordinates string
+    // Prepare coordinates for OSRM table request
     const destinations = places.map(p => `${p.lon},${p.lat}`).join(';');
-    const coordinates = `${startLon},${startLat};${destinations}`;
-    
-    // Use the table service
-    const osrmQuery = `${OSRM_URL}/table/v1/walking/${coordinates}?sources=0&annotations=distance`;
-    
-    console.log('OSRM Query:', osrmQuery);
+    const osrmQuery = `${OSRM_URL}/table/v1/walking/${lon},${lat};${destinations}?sources=0&annotations=distance`;
 
     const response = await fetch(osrmQuery);
     const data = await response.json();
-    
+
     if (data.code !== 'Ok') throw new Error('Invalid OSRM response');
     if (!data.distances?.[0]) throw new Error('No distances found');
 
-    // Process distances
-    const distancesFromSource = data.distances[0].slice(1); // Skip self-distance
-    const distances = places.map((place, i) => ({
-      place,
-      distance: distancesFromSource[i] / 1000 // Convert to km
-    }));
+    // Process all distances
+    const distances = places.map((place, i) => {
+      const distance = data.distances[0][i+1] / 1000; // Skip first (self) and convert to km
+      console.log(`Market: ${place.name} @ ${place.lon},${place.lat} → ${distance.toFixed(2)} km`);
+      return { place, distance };
+    });
 
+    // Filter out invalid distances and find closest
     const validDistances = distances.filter(d => d.distance && isFinite(d.distance));
     if (!validDistances.length) return null;
 
@@ -36,19 +35,20 @@ export const findClosestPlace = async (school, places, amenityType) => {
       curr.distance < min.distance ? curr : min
     );
 
+    console.log(`\n>> CLOSEST ${amenityType.label.toUpperCase()}: ${closest.place.name} @ ${closest.distance.toFixed(2)} km <<`);
+
     return {
       school: school.displayName,
       place: closest.place.name,
       distance: closest.distance.toFixed(2),
       rawData: {
-        schoolCoords: [startLon, startLat],
+        schoolCoords: [lon, lat],
         placeCoords: [closest.place.lon, closest.place.lat]
       }
     };
+
   } catch (err) {
-    console.error('OSRM Error:', err);
+    console.error(`Processing failed: ${err.message}`);
     return null;
-  } finally {
-    console.groupEnd();
   }
 };
