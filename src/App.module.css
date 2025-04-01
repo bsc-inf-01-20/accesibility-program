@@ -1,7 +1,45 @@
+/* Global Variables */
+:root {
+  /* Light Theme Defaults */
+  --sidebar-bg: #2c6693;
+  --sidebar-header-bg: #1a4d80;
+  --sidebar-text: #ffffff;
+  --sidebar-active: rgba(255, 255, 255, 0.2);
+  --sidebar-hover: rgba(255, 255, 255, 0.1);
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  
+  --content-bg: #f7f9fb;
+  --content-text: #333333;
+  --content-border: #e0e0e0;
+  
+  --primary-accent: #2c6693;
+  --secondary-accent: #1a4d80;
+}
+
+.dark-mode {
+  /* Dark Theme Overrides */
+  --sidebar-bg: #1e1e1e;
+  --sidebar-header-bg: #121212;
+  --sidebar-text: #e0e0e0;
+  --sidebar-active: rgba(255, 255, 255, 0.2);
+  --sidebar-hover: rgba(255, 255, 255, 0.1);
+  --sidebar-border: #333333;
+  
+  --content-bg: #121212;
+  --content-text: #f0f0f0;
+  --content-border: #333333;
+  
+  --primary-accent: #4a90e2;
+  --secondary-accent: #2c6693;
+}
+
 /* Main App Container */
 .appContainer {
   display: flex;
   min-height: 100vh;
+  background-color: var(--content-bg);
+  color: var(--content-text);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Main Content Area */
@@ -9,7 +47,8 @@
   flex: 1;
   padding: 24px;
   transition: margin-left 0.3s ease;
-  background: #f7f9fb;
+  background-color: var(--content-bg);
+  color: var(--content-text);
 }
 
 .contentWrapper {
@@ -18,21 +57,67 @@
   padding-top: 20px;
 }
 
+/* Table Styles */
+.dhis2-ui-table {
+  background-color: var(--content-bg);
+  color: var(--content-text);
+  border-color: var(--content-border);
+}
+
+.dhis2-ui-table th {
+  font-weight: bold !important;
+  background-color: var(--secondary-accent) !important;
+  color: white !important;
+}
+
+.dhis2-ui-table tr:nth-child(even) {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+.dark-mode .dhis2-ui-table tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Form Elements */
+.dhis2-ui-input {
+  background-color: var(--content-bg);
+  color: var(--content-text);
+  border-color: var(--content-border);
+}
+
 /* Responsive Adjustments */
 @media (max-width: 768px) {
   .mainContent {
     padding: 16px;
+    margin-left: 60px !important; /* Ensure content doesn't hide behind collapsed nav */
   }
 }
 
-/* Ensure body has no margin */
+/* Base HTML Elements */
 body {
   margin: 0;
   padding: 0;
   overflow-x: hidden;
+  background-color: var(--content-bg);
+  color: var(--content-text);
 }
 
-/* Your existing table styles */
-.dhis2-ui-table th {
-  font-weight: bold !important;
+/* Notification Styles */
+.dhis2-ui-noticebox {
+  border-color: var(--content-border) !important;
+}
+
+/* Button Enhancements */
+.dhis2-ui-button {
+  transition: all 0.2s ease !important;
+}
+
+/* Utility Classes */
+.text-muted {
+  color: var(--content-text);
+  opacity: 0.7;
+}
+
+.border-bottom {
+  border-bottom: 1px solid var(--content-border);
 }
