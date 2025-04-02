@@ -6,7 +6,6 @@ import { AMENITY_TYPES, INITIAL_BATCH_SIZE, BATCH_DELAY_MS } from '../utils/cons
 import { AmenitySelector } from '../components/AmenitySelector/AmenitySelector';
 import { ProgressTracker } from '../components/ProgressTracker/ProgressTracker';
 import { ResultsTable } from '../components/ResultsTable/ResultsTable';
-import { BatchStatus } from '../components/BatchStatus/BatchStatus';
 import { SchoolSelector } from '../components/SchoolSelector/SchoolSelector';
 import './ClosestPlaceFinder.css';
 
@@ -14,7 +13,7 @@ export const ClosestPlaceFinder = () => {
   const { 
     selectedLevels,
     allUnits,
-    selectedSchools,
+    selectedSchools: filteredSchools,
     loading: schoolsLoading,
     error: schoolsError,
     handleSelectLevel,
@@ -36,11 +35,6 @@ export const ClosestPlaceFinder = () => {
   const [elapsedTime, setElapsedTime] = useState(0);
   const startTimeRef = useRef(null);
   const timerRef = useRef(null);
-
-  const deepestSelectedLevel = useMemo(() => {
-    const levels = Object.keys(selectedLevels).map(Number);
-    return levels.length ? Math.max(...levels) : 0;
-  }, [selectedLevels]);
 
   const formatTime = (seconds) => {
     if (isNaN(seconds)) return '--:--';
@@ -72,17 +66,15 @@ export const ClosestPlaceFinder = () => {
   }, [loading]);
 
   const handleFetchData = async () => {
-    if (loading || selectedSchools.length === 0) {
-      return;
-    }
+    if (loading || filteredSchools.length === 0) return;
 
-    const validSchools = selectedSchools.filter(school => {
-      return school?.geometry?.coordinates && 
-             Array.isArray(school.geometry.coordinates) && 
-             school.geometry.coordinates.length === 2;
-    });
+    const validSchools = filteredSchools.filter(school => 
+      school?.geometry?.coordinates && 
+      Array.isArray(school.geometry.coordinates) && 
+      school.geometry.coordinates.length === 2
+    );
 
-    const invalid = selectedSchools.filter(school => !validSchools.includes(school));
+    const invalid = filteredSchools.filter(school => !validSchools.includes(school));
     setInvalidSchools(invalid);
 
     setActionTriggered(true);
@@ -146,6 +138,11 @@ export const ClosestPlaceFinder = () => {
               fetchOrgUnits={fetchOrgUnits}
             />
           </div>
+          {filteredSchools.length > 0 && (
+              <div className="selection-count">
+                {filteredSchools.length} schools selected
+              </div>
+            )}
           
           <div className="form-row">
             <AmenitySelector 
@@ -161,12 +158,13 @@ export const ClosestPlaceFinder = () => {
             <ButtonStrip>
               <Button 
                 onClick={handleFetchData}
-                disabled={loading || schoolsLoading || selectedSchools.length === 0}
+                disabled={loading || schoolsLoading || filteredSchools.length === 0}
                 primary
               >
                 {loading ? 'Processing...' : 'Find Closest Amenities'}
               </Button>
             </ButtonStrip>
+            
           </div>
 
           <div className="notice-container">
@@ -185,12 +183,9 @@ export const ClosestPlaceFinder = () => {
                 {invalidSchools.length} schools skipped due to missing coordinates
               </NoticeBox>
             )}
-            {actionTriggered && selectedSchools.length === 0 && (
+            {actionTriggered && filteredSchools.length === 0 && (
               <NoticeBox warning title="Notice" className="notice-item">
-                {deepestSelectedLevel === 5 ? 
-                  'Selected school not found or missing location data' :
-                  `No schools found under ${allUnits.find(u => u.id === selectedLevels[deepestSelectedLevel])?.displayName || 'selected area'}`
-                }
+                No schools found for current selection
               </NoticeBox>
             )}
           </div>
@@ -265,7 +260,7 @@ export const ClosestPlaceFinder = () => {
           places={places} 
           loading={loading} 
           selectedAmenity={selectedAmenity} 
-          schoolCount={selectedSchools.length}
+          schoolCount={filteredSchools.length}
         />
       </div>
     </div>
