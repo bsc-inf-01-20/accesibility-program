@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { fetchNearbyAmenities } from '../utils/overpass';
-import { findClosestPlace } from '../utils/osrm';
 import { EXTENDED_RADIUS_1, EXTENDED_RADIUS_2 } from '../utils/constants';
 
 export const useOverpassApi = () => {
@@ -25,9 +24,8 @@ export const useOverpassApi = () => {
         amenities = await fetchNearbyAmenities(lat, lon, amenityType, 0, 0, EXTENDED_RADIUS_2);
       }
 
-      if (!amenities.length) return null;
-
-      return await findClosestPlace(school, amenities, amenityType);
+      // Return just the amenities, not the closest place
+      return amenities.length ? amenities : null;
     } catch (err) {
       console.error('Process error:', err);
       setError(err.message);

@@ -9,6 +9,7 @@ export const ResultsTable = ({places, loading, selectedAmenity}) => (
           <TableCell className="table-header-cell">School Name</TableCell>
           <TableCell className="table-header-cell">Closest {selectedAmenity.label}</TableCell>
           <TableCell className="table-header-cell">Distance (km)</TableCell>
+          <TableCell className="table-header-cell">Travel Time</TableCell>
         </TableRow>
       </TableHead>
       <TableBody>
@@ -18,11 +19,12 @@ export const ResultsTable = ({places, loading, selectedAmenity}) => (
               <TableCell>{place.school}</TableCell>
               <TableCell>{place.place}</TableCell>
               <TableCell>{place.distance}</TableCell>
+              <TableCell>{place.time}</TableCell>
             </TableRow>
           ))
         ) : (
           <TableRow>
-            <TableCell colSpan="3" className="table-cell-centered">
+            <TableCell colSpan="4" className="table-cell-centered">
               {loading ? (
                 <div className="loading-indicator">
                   <CircularLoader small />
