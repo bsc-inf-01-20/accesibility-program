@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "build": "d2-app-scripts build",
-    "start": "d2-app-scripts start --proxy https://emis.ccdev.org/dev",
+    "start": "d2-app-scripts start --proxy https://project.ccdev.org/emis",
     "test": "d2-app-scripts test",
     "deploy": "d2-app-scripts deploy",
     "format": "prettier --write src/**/*.{js,jsx,json,css}",
@@ -23,6 +23,9 @@
   "dependencies": {
     "@dhis2/app-runtime": "^3.14.0",
     "@dhis2/ui": "^10.5.1",
+    "@types/leaflet.markercluster": "^1.5.5",
+    "leaflet": "^1.9.4",
+    "leaflet.markercluster": "^1.5.3",
     "prop-types": "^15.8.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
