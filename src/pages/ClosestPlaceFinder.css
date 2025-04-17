@@ -409,3 +409,84 @@
 .duration {
   color: #666;
 }
+
+/* Button Strip Spacing */
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.action-buttons > * {
+  margin: 0 !important;
+}
+
+@media (max-width: 768px) {
+  .action-buttons {
+    gap: 6px;
+  }
+}
+
+/* ===== NEW EXPORT BUTTONS STYLES ===== */
+.export-buttons-container {
+  display: flex;
+  gap: 12px;
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+
+.export-button {
+  background-color: #f0f7ff;
+  border: 1px solid #3b82f6;
+  color: #1a56db;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.export-button:hover {
+  background-color: #e1effe;
+}
+
+.export-button:disabled {
+  background-color: #f3f4f6;
+  border-color: #d1d5db;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.export-button.pdf {
+  background-color: #fef2f2;
+  border-color: #ef4444;
+  color: #dc2626;
+}
+
+.export-button.pdf:hover {
+  background-color: #fee2e2;
+}
+
+/* PDF canvas styling */
+.pdf-preview-container {
+  margin-top: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .export-buttons-container {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .export-button {
+    width: 100%;
+    justify-content: center;
+  }
+}

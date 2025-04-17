@@ -3,12 +3,14 @@ import { Button, ButtonStrip, NoticeBox } from '@dhis2/ui';
 import { useFetchSchools } from '../Hooks/useFetchSchools';
 import { useOverpassApi } from '../Hooks/useOverpassApi';
 import { useMapboxRouting } from '../Hooks/useMapboxRouting';
+import { useSaveResults } from '../Hooks/useSaveResults';
 import { AMENITY_TYPES, INITIAL_BATCH_SIZE, BATCH_DELAY_MS } from '../utils/constants';
 import { AmenitySelector } from '../components/AmenitySelector/AmenitySelector';
 import { ProgressTracker } from '../components/ProgressTracker/ProgressTracker';
 import { ResultsTable } from '../components/ResultsTable/ResultsTable';
 import { SchoolSelector } from '../components/SchoolSelector/SchoolSelector';
 import { MapViewer } from '../components/MapViewer/MapViewer';
+import { ExportButton } from '../components/ExportButton/ExportButton'
 import './ClosestPlaceFinder.css';
 
 export const ClosestPlaceFinder = () => {
@@ -24,6 +26,7 @@ export const ClosestPlaceFinder = () => {
   } = useFetchSchools();
   
   // Data processing hooks
+  const { save, loading: saving, error: saveError, response: saveResponse } = useSaveResults();
   const { processSchool, loading: overpassLoading, error: overpassError } = useOverpassApi();
   const { findClosestPlace, error: mapboxError } = useMapboxRouting();
 
@@ -43,6 +46,11 @@ export const ClosestPlaceFinder = () => {
   const [invalidSchools, setInvalidSchools] = useState([]);
   const [processingSpeed, setProcessingSpeed] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [notification, setNotification] = useState({ 
+    show: false, 
+    message: '', 
+    type: '' 
+  });
   
   // Refs for timing
   const startTimeRef = useRef(null);
@@ -126,9 +134,15 @@ export const ClosestPlaceFinder = () => {
               return null;
             }
             console.log(`Processing ${school.displayName} with ${amenities.length} amenities`);
-            return await findClosestPlace(school, amenities, selectedAmenity);
+            
+            const result = await findClosestPlace(school, amenities, selectedAmenity);
+            if (result && result.rawData) {
+              result.rawData.orgUnit = school.id; // ✅ Attach the orgUnit for DHIS2
+            }
+            return result;
           })
         );
+        
 
         // Process results
         const validResults = results.filter(Boolean);
@@ -162,6 +176,16 @@ export const ClosestPlaceFinder = () => {
       setCurrentBatch([]);
     }
   };
+
+  const handleSaveResults = async () => {
+    const result = await save(places, selectedAmenity);
+    if (result) {
+      setNotification({ show: true, message: 'Saved successfully!', type: 'success' });
+    } else {
+      setNotification({ show: true, message: 'Failed to save.', type: 'error' });
+    }
+  };
+  
 
   // Calculate map center for all results
   const calculateCenter = (coordsArray) => {
@@ -205,39 +229,62 @@ export const ClosestPlaceFinder = () => {
         </div>
 
         {/* Action buttons */}
-        <div className="action-section">
-          <ButtonStrip>
-            <Button 
-              onClick={handleFetchData}
-              disabled={overpassLoading || schoolsLoading || !filteredSchools.length}
-              primary
-            >
-              {overpassLoading ? 'Processing...' : 'Find Closest Amenities'}
-            </Button>
-            <Button
-              onClick={() => setShowAllResultsMap(!showAllResultsMap)}
-              disabled={!progress.isComplete || !allResults.length}
-              secondary
-            >
-              {showAllResultsMap ? 'Hide Map' : 'View All Results Map'}
-            </Button>
-          </ButtonStrip>
+        {/* Action buttons */}
+<div className="action-section">
+  <ButtonStrip className="action-buttons">
+    <Button 
+      onClick={handleFetchData}
+      disabled={overpassLoading || schoolsLoading || !filteredSchools.length}
+      primary
+    >
+      {overpassLoading ? 'Processing...' : 'Find Closest Amenities'}
+    </Button>
+    <Button
+      onClick={() => setShowAllResultsMap(!showAllResultsMap)}
+      disabled={!progress.isComplete || !allResults.length}
+      secondary
+    >
+      {showAllResultsMap ? 'Hide Map' : 'View All Results Map'}
+    </Button>
+    <ExportButton 
+      results={places} 
+      amenityType={selectedAmenity}
+      disabled={!progress.isComplete || places.length === 0}
+    />
+    <Button
+      onClick={handleSaveResults}
+      disabled={!progress.isComplete || places.length === 0 || saving}
+      primary
+    >
+      {saving ? 'Saving...' : 'Save to DHIS2'}
+    </Button>
 
-          {/* Notifications */}
-          <div className="notice-container">
-            {error && <NoticeBox error title="Error">{error}</NoticeBox>}
-            {invalidSchools.length > 0 && (
-              <NoticeBox warning title="Notice">
-                {invalidSchools.length} schools skipped due to missing coordinates
-              </NoticeBox>
-            )}
-            {progress.isComplete && (
-              <NoticeBox success title="Complete">
-                Processed {progress.processed} schools
-              </NoticeBox>
-            )}
-          </div>
-        </div>
+  </ButtonStrip>
+
+  {/* Notifications */}
+  <div className="notice-container">
+    {error && <NoticeBox error title="Error">{error}</NoticeBox>}
+    {invalidSchools.length > 0 && (
+      <NoticeBox warning title="Notice">
+        {invalidSchools.length} schools skipped due to missing coordinates
+      </NoticeBox>
+    )}
+    {progress.isComplete && (
+      <NoticeBox success title="Complete">
+        Processed {progress.processed} schools
+      </NoticeBox>
+    )}
+    {notification.show && (
+      <NoticeBox 
+        title={notification.type === 'success' ? 'Success' : 'Error'}
+        {...(notification.type === 'success' ? { success: true } : { error: true })}
+        onHidden={() => setNotification({ show: false })}
+      >
+        {notification.message}
+      </NoticeBox>
+    )}
+  </div>
+</div>
 
         {/* Progress tracking */}
         {(progress.total > 0) && (

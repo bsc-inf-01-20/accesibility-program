@@ -24,11 +24,15 @@
     "@dhis2/app-runtime": "^3.14.0",
     "@dhis2/ui": "^10.5.1",
     "@types/leaflet.markercluster": "^1.5.5",
+    "file-saver": "^2.0.5",
+    "jspdf": "^3.0.1",
+    "jspdf-autotable": "^5.0.2",
     "leaflet": "^1.9.4",
     "leaflet.markercluster": "^1.5.3",
     "prop-types": "^15.8.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.22.1"
+    "react-router-dom": "^6.22.1",
+    "xlsx": "^0.18.5"
   }
 }
