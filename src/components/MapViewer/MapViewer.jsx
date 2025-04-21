@@ -3,43 +3,35 @@ import { Button, Modal, ModalTitle, ModalContent, ModalActions } from '@dhis2/ui
 import useLeafletMap from '../../Hooks/useLeafletMap';
 import './MapViewer.css';
 
-export const MapViewer = ({ result, onClose, allResults }) => {
+export const MapViewer = ({ result, onClose }) => {
   const mapContainerRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
-  const resultsToUse = allResults || (result ? [result] : []);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsReady(true), 300);
     return () => clearTimeout(timer);
   }, []);
 
-  useLeafletMap(mapContainerRef, isReady ? resultsToUse : []);
+  useLeafletMap(mapContainerRef, isReady ? [result] : []);
 
-  if (!result && !allResults) return null;
+  if (!result) return null;
 
   return (
     <Modal open large onClose={onClose}>
       <ModalTitle>
-        {allResults
-          ? 'All Schools and Amenities'
-          : `Route from ${result.school} to ${result.place}`}
+        Route from {result.school} to {result.place}
       </ModalTitle>
       <ModalContent>
         <div
           ref={mapContainerRef}
-          style={{
-            height: '500px',
-            width: '100%',
-            borderRadius: '4px',
-            zIndex: 0,
-          }}
+          className="map-container"
         />
-        {!allResults && (
-          <div style={{ marginTop: '16px' }}>
-            <strong>Distance:</strong> {result.distance} km<br />
-            <strong>Travel time:</strong> {result.time}
-          </div>
-        )}
+        <div className="route-details">
+          <div><strong>School:</strong> {result.school}</div>
+          <div><strong>Amenity:</strong> {result.place}</div>
+          <div><strong>Distance:</strong> {result.distance} km</div>
+          <div><strong>Travel time:</strong> {result.time}</div>
+        </div>
       </ModalContent>
       <ModalActions>
         <Button onClick={onClose}>Close</Button>

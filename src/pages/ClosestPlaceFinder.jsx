@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Button, ButtonStrip, NoticeBox } from '@dhis2/ui';
+import { Button, ButtonStrip, NoticeBox, Modal, ModalTitle, ModalContent, ModalActions } from '@dhis2/ui';
 import { useFetchSchools } from '../Hooks/useFetchSchools';
 import { useOverpassApi } from '../Hooks/useOverpassApi';
 import { useMapboxRouting } from '../Hooks/useMapboxRouting';
@@ -30,23 +30,35 @@ export const ClosestPlaceFinder = () => {
   // State management
   const [places, setPlaces] = useState([]);
   const [allResults, setAllResults] = useState([]);
-  const [showAllResultsMap, setShowAllResultsMap] = useState(false);
-  const [progress, setProgress] = useState({ 
-    processed: 0, 
-    total: 0,
-    remaining: 0,
-    isComplete: false 
-  });
+  const [selectedResult, setSelectedResult] = useState(null);
+  const [showRouteSelector, setShowRouteSelector] = useState(false);
   const [currentBatch, setCurrentBatch] = useState([]);
   const [selectedAmenity, setSelectedAmenity] = useState(AMENITY_TYPES.MARKET);
   const [actionTriggered, setActionTriggered] = useState(false);
   const [invalidSchools, setInvalidSchools] = useState([]);
-  const [processingSpeed, setProcessingSpeed] = useState(0);
-  const [elapsedTime, setElapsedTime] = useState(0);
   
-  // Refs for timing
-  const startTimeRef = useRef(null);
-  const timerRef = useRef(null);
+  // Progress tracking
+  const [progress, setProgress] = useState({ 
+    processed: 0, 
+    total: 0,
+    isComplete: false 
+  });
+  
+  // Metrics tracking
+  const [metrics, setMetrics] = useState({
+    speed: 0,
+    elapsed: 0,
+    remaining: 0,
+    initialized: false
+  });
+
+  // Refs
+  const metricsRef = useRef({
+    startTime: null,
+    lastUpdate: null,
+    lastProcessed: 0
+  });
+  const metricsIntervalRef = useRef(null);
 
   // Combine errors from all sources
   const error = schoolsError || overpassError || mapboxError;
@@ -59,26 +71,69 @@ export const ClosestPlaceFinder = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Calculate processing speed
+  // Metrics calculation effect
   useEffect(() => {
-    if (progress.processed > 0 && elapsedTime > 0) {
-      setProcessingSpeed(progress.processed / elapsedTime);
-    }
-  }, [progress.processed, elapsedTime]);
+    if (overpassLoading && !metricsRef.current.startTime) {
+      // Initialize metrics when processing starts
+      metricsRef.current = {
+        startTime: Date.now(),
+        lastUpdate: Date.now(),
+        lastProcessed: progress.processed
+      };
+      
+      setMetrics({
+        speed: 0,
+        elapsed: 0,
+        remaining: 0,
+        initialized: true
+      });
 
-  // Timer effect
-  useEffect(() => {
-    if (overpassLoading) {
-      startTimeRef.current = Date.now();
-      timerRef.current = setInterval(() => {
-        setElapsedTime((Date.now() - startTimeRef.current) / 1000);
+      // Set up interval for metrics updates
+      metricsIntervalRef.current = setInterval(() => {
+        const now = Date.now();
+        const elapsedSeconds = (now - metricsRef.current.startTime) / 1000;
+        
+        // Calculate speed (schools per second)
+        const processedDelta = progress.processed - metricsRef.current.lastProcessed;
+        const timeDelta = (now - metricsRef.current.lastUpdate) / 1000;
+        const currentSpeed = timeDelta > 0 ? processedDelta / timeDelta : 0;
+
+        // Calculate remaining time
+        const remainingSchools = progress.total - progress.processed;
+        const remainingTime = currentSpeed > 0 ? remainingSchools / currentSpeed : 0;
+
+        // Update metrics with smoothed values
+        setMetrics(prev => ({
+          speed: currentSpeed > 0 ? (prev.speed * 0.7 + currentSpeed * 0.3) : currentSpeed,
+          elapsed: elapsedSeconds,
+          remaining: remainingTime > 0 ? remainingTime : 0,
+          initialized: true
+        }));
+
+        // Update refs for next calculation
+        metricsRef.current = {
+          ...metricsRef.current,
+          lastUpdate: now,
+          lastProcessed: progress.processed
+        };
       }, 1000);
-    } else {
-      clearInterval(timerRef.current);
+    } else if (!overpassLoading && metricsIntervalRef.current) {
+      // Clean up when processing stops
+      clearInterval(metricsIntervalRef.current);
+      metricsIntervalRef.current = null;
+      metricsRef.current = {
+        startTime: null,
+        lastUpdate: null,
+        lastProcessed: 0
+      };
     }
 
-    return () => clearInterval(timerRef.current);
-  }, [overpassLoading]);
+    return () => {
+      if (metricsIntervalRef.current) {
+        clearInterval(metricsIntervalRef.current);
+      }
+    };
+  }, [overpassLoading, progress.processed, progress.total]);
 
   const handleFetchData = async () => {
     if (overpassLoading || filteredSchools.length === 0) return;
@@ -94,11 +149,11 @@ export const ClosestPlaceFinder = () => {
     setActionTriggered(true);
     setPlaces([]);
     setAllResults([]);
-    setShowAllResultsMap(false);
+    setSelectedResult(null);
+    setShowRouteSelector(false);
     setProgress({ 
       processed: 0, 
       total: validSchools.length,
-      remaining: validSchools.length,
       isComplete: false
     });
 
@@ -110,27 +165,22 @@ export const ClosestPlaceFinder = () => {
         const batch = validSchools.slice(i, i + dynamicBatchSize);
         setCurrentBatch(batch.map(s => s.displayName));
 
-        const startBatchTime = Date.now();
+        const batchStartTime = Date.now();
         
-        // Step 1: Fetch amenities for all schools in batch
+        // Process batch
         const amenitiesResults = await Promise.all(
           batch.map(school => processSchool(school, selectedAmenity))
         );
         
-        // Step 2: Find closest place for each school using Mapbox
         const results = await Promise.all(
           batch.map(async (school, index) => {
             const amenities = amenitiesResults[index];
-            if (!amenities?.length) {
-              console.log(`No amenities found for ${school.displayName}`);
-              return null;
-            }
-            console.log(`Processing ${school.displayName} with ${amenities.length} amenities`);
+            if (!amenities?.length) return null;
             return await findClosestPlace(school, amenities, selectedAmenity);
           })
         );
 
-        // Process results
+        // Update results
         const validResults = results.filter(Boolean);
         accumulatedResults = [...accumulatedResults, ...validResults];
         setPlaces(accumulatedResults);
@@ -141,12 +191,11 @@ export const ClosestPlaceFinder = () => {
         setProgress(prev => ({
           ...prev,
           processed: newProcessed,
-          remaining: validSchools.length - newProcessed,
           isComplete: newProcessed >= validSchools.length
         }));
 
         // Adjust batch size dynamically
-        const batchTime = (Date.now() - startBatchTime) / 1000;
+        const batchTime = (Date.now() - batchStartTime) / 1000;
         dynamicBatchSize = batchTime < 1 
           ? Math.min(dynamicBatchSize + 1, 10) 
           : Math.max(dynamicBatchSize - 1, 2);
@@ -163,18 +212,6 @@ export const ClosestPlaceFinder = () => {
     }
   };
 
-  // Calculate map center for all results
-  const calculateCenter = (coordsArray) => {
-    if (!coordsArray.length) return [0, 0];
-    const lats = coordsArray.map(c => c[1]);
-    const lons = coordsArray.map(c => c[0]);
-    return [
-      (Math.min(...lons) + Math.max(...lons)) / 2,
-      (Math.min(...lats) + Math.max(...lats)) / 2
-    ];
-  };
-
-  // Render UI
   return (
     <div className="closest-place-finder">
       <h1 className="app-header">School Proximity Analyzer</h1>
@@ -215,11 +252,11 @@ export const ClosestPlaceFinder = () => {
               {overpassLoading ? 'Processing...' : 'Find Closest Amenities'}
             </Button>
             <Button
-              onClick={() => setShowAllResultsMap(!showAllResultsMap)}
+              onClick={() => setShowRouteSelector(true)}
               disabled={!progress.isComplete || !allResults.length}
               secondary
             >
-              {showAllResultsMap ? 'Hide Map' : 'View All Results Map'}
+              View Routes
             </Button>
           </ButtonStrip>
 
@@ -246,7 +283,11 @@ export const ClosestPlaceFinder = () => {
               <h3>{overpassLoading ? 'Processing...' : 'Completed'}</h3>
               <div className="progress-metrics">
                 <div>Processed: {progress.processed}/{progress.total}</div>
-                <div>Speed: {processingSpeed.toFixed(1)} schools/sec</div>
+                <div>
+                  Speed: {metrics.initialized ? 
+                    (metrics.speed > 0 ? metrics.speed.toFixed(1) + ' schools/sec' : 'Starting...') 
+                    : '--'}
+                </div>
               </div>
             </div>
             
@@ -263,29 +304,54 @@ export const ClosestPlaceFinder = () => {
             )}
 
             <div className="time-estimates">
-              <div>Elapsed: {formatTime(elapsedTime)}</div>
-              <div>Remaining: {formatTime(progress.remaining / processingSpeed)}</div>
+              <div>Elapsed: {metrics.initialized ? formatTime(metrics.elapsed) : '--:--'}</div>
+              <div>Remaining: {metrics.initialized && metrics.speed > 0 ? 
+                formatTime(metrics.remaining) : '--:--'}</div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Results display */}
-      {showAllResultsMap && allResults.length > 0 && (
-        <div className="all-results-map-container">
-          <MapViewer 
-            result={{
-              school: "All Schools",
-              place: "All Amenities",
-              rawData: {
-                schoolCoords: calculateCenter(allResults.map(r => r.rawData.schoolCoords)),
-                placeCoords: calculateCenter(allResults.map(r => r.rawData.placeCoords))
-              }
-            }}
-            allResults={allResults}
-            onClose={() => setShowAllResultsMap(false)}
-          />
-        </div>
+      {/* Route Selector Modal */}
+      {showRouteSelector && allResults.length > 0 && (
+        <Modal
+          open
+          onClose={() => setShowRouteSelector(false)}
+          large
+        >
+          <ModalTitle>Select a Route to View</ModalTitle>
+          <ModalContent>
+            <div className="route-selector-container">
+              {allResults.map((result, index) => (
+                <div 
+                  key={`${result.school}-${result.place}`}
+                  className="route-option"
+                  onClick={() => {
+                    setSelectedResult(result);
+                    setShowRouteSelector(false);
+                  }}
+                >
+                  <strong>{result.school}</strong> to <strong>{result.place}</strong>
+                  <div className="route-meta">
+                    <span>Distance: {result.distance} km</span>
+                    <span>Time: {result.time}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ModalContent>
+          <ModalActions>
+            <Button onClick={() => setShowRouteSelector(false)}>Cancel</Button>
+          </ModalActions>
+        </Modal>
+      )}
+
+      {/* Single Route Map Viewer */}
+      {selectedResult && (
+        <MapViewer 
+          result={selectedResult} 
+          onClose={() => setSelectedResult(null)}
+        />
       )}
 
       <ResultsTable 
