@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button, ButtonStrip, NoticeBox, Modal, ModalTitle, ModalContent, ModalActions } from '@dhis2/ui';
 import { useFetchSchools } from '../Hooks/useFetchSchools';
-import { useOverpassApi } from '../Hooks/useOverpassApi';
-import { useMapboxRouting } from '../Hooks/useMapboxRouting';
-import { AMENITY_TYPES, INITIAL_BATCH_SIZE, BATCH_DELAY_MS } from '../utils/constants';
+import { useGooglePlacesApi } from '../Hooks/useGooglePlacesApi';
+import { useGoogleRouting } from '../Hooks/useGoogleRouting';
+import { AMENITY_TYPES } from '../utils/constants';
 import { AmenitySelector } from '../components/AmenitySelector/AmenitySelector';
 import { ProgressTracker } from '../components/ProgressTracker/ProgressTracker';
 import { ResultsTable } from '../components/ResultsTable/ResultsTable';
 import { SchoolSelector } from '../components/SchoolSelector/SchoolSelector';
-import { MapViewer } from '../components/MapViewer/MapViewer';
+import { LeafletMapViewer } from '../components/MapViewer/LeafletMapViewer';
 import './ClosestPlaceFinder.css';
 
 export const ClosestPlaceFinder = () => {
@@ -24,18 +24,33 @@ export const ClosestPlaceFinder = () => {
   } = useFetchSchools();
   
   // Data processing hooks
-  const { processSchool, loading: overpassLoading, error: overpassError } = useOverpassApi();
-  const { findClosestPlace, error: mapboxError } = useMapboxRouting();
+  const { 
+    processSchool, 
+    loading: placesLoading, 
+    error: placesError 
+  } = useGooglePlacesApi();
+  
+  const { 
+    findClosestPlace,
+    loading: routingLoading,
+    error: routingError,
+    progress: routingProgress
+  } = useGoogleRouting();
 
   // State management
   const [places, setPlaces] = useState([]);
   const [allResults, setAllResults] = useState([]);
+  const [batchResults, setBatchResults] = useState([]);
   const [selectedResult, setSelectedResult] = useState(null);
   const [showRouteSelector, setShowRouteSelector] = useState(false);
-  const [currentBatch, setCurrentBatch] = useState([]);
   const [selectedAmenity, setSelectedAmenity] = useState(AMENITY_TYPES.MARKET);
   const [actionTriggered, setActionTriggered] = useState(false);
   const [invalidSchools, setInvalidSchools] = useState([]);
+  const [noResultsSchools, setNoResultsSchools] = useState([]);
+  const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
+  
+  // Batch processing config
+  const BATCH_SIZE = 3;
   
   // Progress tracking
   const [progress, setProgress] = useState({ 
@@ -61,7 +76,7 @@ export const ClosestPlaceFinder = () => {
   const metricsIntervalRef = useRef(null);
 
   // Combine errors from all sources
-  const error = schoolsError || overpassError || mapboxError;
+  const error = schoolsError || placesError || routingError;
 
   // Format time display
   const formatTime = (seconds) => {
@@ -73,8 +88,7 @@ export const ClosestPlaceFinder = () => {
 
   // Metrics calculation effect
   useEffect(() => {
-    if (overpassLoading && !metricsRef.current.startTime) {
-      // Initialize metrics when processing starts
+    if (placesLoading && !metricsRef.current.startTime) {
       metricsRef.current = {
         startTime: Date.now(),
         lastUpdate: Date.now(),
@@ -88,21 +102,17 @@ export const ClosestPlaceFinder = () => {
         initialized: true
       });
 
-      // Set up interval for metrics updates
       metricsIntervalRef.current = setInterval(() => {
         const now = Date.now();
         const elapsedSeconds = (now - metricsRef.current.startTime) / 1000;
         
-        // Calculate speed (schools per second)
         const processedDelta = progress.processed - metricsRef.current.lastProcessed;
         const timeDelta = (now - metricsRef.current.lastUpdate) / 1000;
         const currentSpeed = timeDelta > 0 ? processedDelta / timeDelta : 0;
 
-        // Calculate remaining time
         const remainingSchools = progress.total - progress.processed;
         const remainingTime = currentSpeed > 0 ? remainingSchools / currentSpeed : 0;
 
-        // Update metrics with smoothed values
         setMetrics(prev => ({
           speed: currentSpeed > 0 ? (prev.speed * 0.7 + currentSpeed * 0.3) : currentSpeed,
           elapsed: elapsedSeconds,
@@ -110,15 +120,13 @@ export const ClosestPlaceFinder = () => {
           initialized: true
         }));
 
-        // Update refs for next calculation
         metricsRef.current = {
           ...metricsRef.current,
           lastUpdate: now,
           lastProcessed: progress.processed
         };
       }, 1000);
-    } else if (!overpassLoading && metricsIntervalRef.current) {
-      // Clean up when processing stops
+    } else if (!placesLoading && metricsIntervalRef.current) {
       clearInterval(metricsIntervalRef.current);
       metricsIntervalRef.current = null;
       metricsRef.current = {
@@ -133,24 +141,79 @@ export const ClosestPlaceFinder = () => {
         clearInterval(metricsIntervalRef.current);
       }
     };
-  }, [overpassLoading, progress.processed, progress.total]);
+  }, [placesLoading, progress.processed, progress.total]);
+
+  const processSchoolBatch = async (school, amenityType) => {
+    try {
+      // 1. Find nearby places
+      const foundPlaces = await processSchool(school, amenityType);
+      const validPlaces = foundPlaces?.filter(p => p?.location?.lat && p?.location?.lng) || [];
+      
+      if (validPlaces.length === 0) {
+        setNoResultsSchools(prev => [...prev, school.displayName]);
+        return null;
+      }
+
+      // 2. Find closest place
+      const closest = await findClosestPlace(
+        {
+          ...school,
+          geometry: {
+            coordinates: school.geometry.coordinates
+          }
+        },
+        validPlaces,
+        amenityType
+      );
+
+      if (!closest) return null;
+
+      return {
+        school: school.displayName,
+        schoolId: school.id,
+        place: closest.place,
+        distance: closest.distance,
+        duration: closest.duration,
+        time: closest.time,
+        overviewPolyline: closest.overviewPolyline,
+        steps: closest.steps,
+        location: closest.location,
+        schoolLocation: closest.schoolLocation,
+        bounds: closest.bounds,
+        batchId: currentBatchIndex
+      };
+
+    } catch (err) {
+      console.error(`Error processing ${school.displayName}:`, err);
+      return null;
+    }
+  };
 
   const handleFetchData = async () => {
-    if (overpassLoading || filteredSchools.length === 0) return;
+    const isLoading = schoolsLoading || placesLoading || routingLoading;
+    if (isLoading || filteredSchools.length === 0) return;
 
     // Filter schools with valid coordinates
-    const validSchools = filteredSchools.filter(school => 
-      school?.geometry?.coordinates?.length === 2
-    );
+    const validSchools = filteredSchools.filter(school => {
+      const coords = school?.geometry?.coordinates;
+      const hasValidCoords = coords?.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1]);
+      if (!hasValidCoords) {
+        console.warn(`Invalid coordinates for ${school.displayName}:`, coords);
+      }
+      return hasValidCoords;
+    });
+
     const invalid = filteredSchools.filter(school => !validSchools.includes(school));
     setInvalidSchools(invalid);
 
-    // Reset state for new processing
+    // Reset state
     setActionTriggered(true);
     setPlaces([]);
     setAllResults([]);
+    setBatchResults([]);
     setSelectedResult(null);
-    setShowRouteSelector(false);
+    setNoResultsSchools([]);
+    setCurrentBatchIndex(0);
     setProgress({ 
       processed: 0, 
       total: validSchools.length,
@@ -158,57 +221,33 @@ export const ClosestPlaceFinder = () => {
     });
 
     try {
-      let dynamicBatchSize = INITIAL_BATCH_SIZE;
-      let accumulatedResults = [];
-
-      for (let i = 0; i < validSchools.length; i += dynamicBatchSize) {
-        const batch = validSchools.slice(i, i + dynamicBatchSize);
-        setCurrentBatch(batch.map(s => s.displayName));
-
-        const batchStartTime = Date.now();
+      // Process in batches
+      for (let i = 0; i < validSchools.length; i += BATCH_SIZE) {
+        const batch = validSchools.slice(i, i + BATCH_SIZE);
+        setCurrentBatchIndex(i);
         
-        // Process batch
-        const amenitiesResults = await Promise.all(
-          batch.map(school => processSchool(school, selectedAmenity))
-        );
-        
-        const results = await Promise.all(
-          batch.map(async (school, index) => {
-            const amenities = amenitiesResults[index];
-            if (!amenities?.length) return null;
-            return await findClosestPlace(school, amenities, selectedAmenity);
-          })
+        const batchPromises = batch.map(school => 
+          processSchoolBatch(school, selectedAmenity)
         );
 
-        // Update results
+        const results = await Promise.all(batchPromises);
         const validResults = results.filter(Boolean);
-        accumulatedResults = [...accumulatedResults, ...validResults];
-        setPlaces(accumulatedResults);
-        setAllResults(accumulatedResults);
         
-        // Update progress
-        const newProcessed = Math.min(i + dynamicBatchSize, validSchools.length);
+        setBatchResults(prev => [...prev, ...validResults]);
+        setPlaces(prev => [...prev, ...validResults]);
+        setAllResults(prev => [...prev, ...validResults]);
         setProgress(prev => ({
           ...prev,
-          processed: newProcessed,
-          isComplete: newProcessed >= validSchools.length
+          processed: i + batch.length,
+          isComplete: i + batch.length >= validSchools.length
         }));
-
-        // Adjust batch size dynamically
-        const batchTime = (Date.now() - batchStartTime) / 1000;
-        dynamicBatchSize = batchTime < 1 
-          ? Math.min(dynamicBatchSize + 1, 10) 
-          : Math.max(dynamicBatchSize - 1, 2);
-
-        // Add delay between batches if not complete
-        if (newProcessed < validSchools.length) {
-          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
-        }
+        
+        // Small delay between batches for better UX
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
     } catch (err) {
-      console.error('Processing error:', err);
-    } finally {
-      setCurrentBatch([]);
+      console.error('Batch processing error:', err);
+      setError(`Processing failed: ${err.message}`);
     }
   };
 
@@ -246,10 +285,10 @@ export const ClosestPlaceFinder = () => {
           <ButtonStrip>
             <Button 
               onClick={handleFetchData}
-              disabled={overpassLoading || schoolsLoading || !filteredSchools.length}
+              disabled={placesLoading || schoolsLoading || !filteredSchools.length}
               primary
             >
-              {overpassLoading ? 'Processing...' : 'Find Closest Amenities'}
+              {placesLoading ? 'Processing...' : 'Find Closest Amenities'}
             </Button>
             <Button
               onClick={() => setShowRouteSelector(true)}
@@ -265,12 +304,17 @@ export const ClosestPlaceFinder = () => {
             {error && <NoticeBox error title="Error">{error}</NoticeBox>}
             {invalidSchools.length > 0 && (
               <NoticeBox warning title="Notice">
-                {invalidSchools.length} schools skipped due to missing coordinates
+                {invalidSchools.length} schools skipped due to invalid coordinates
+              </NoticeBox>
+            )}
+            {noResultsSchools.length > 0 && (
+              <NoticeBox warning title="Notice">
+                No {selectedAmenity.label} found near: {noResultsSchools.join(', ')}
               </NoticeBox>
             )}
             {progress.isComplete && (
               <NoticeBox success title="Complete">
-                Processed {progress.processed} schools
+                Processed {progress.processed} schools, found {allResults.length} results for {selectedAmenity.label}
               </NoticeBox>
             )}
           </div>
@@ -278,15 +322,19 @@ export const ClosestPlaceFinder = () => {
 
         {/* Progress tracking */}
         {(progress.total > 0) && (
-          <div className={`progress-section ${overpassLoading ? 'is-processing' : ''}`}>
+          <div className={`progress-section ${placesLoading ? 'is-processing' : ''}`}>
             <div className="progress-header">
-              <h3>{overpassLoading ? 'Processing...' : 'Completed'}</h3>
+              <h3>{placesLoading ? 'Processing...' : 'Completed'}</h3>
               <div className="progress-metrics">
                 <div>Processed: {progress.processed}/{progress.total}</div>
                 <div>
                   Speed: {metrics.initialized ? 
                     (metrics.speed > 0 ? metrics.speed.toFixed(1) + ' schools/sec' : 'Starting...') 
                     : '--'}
+                </div>
+                <div className="batch-progress">
+                  Batch {Math.floor(currentBatchIndex/BATCH_SIZE) + 1}/
+                  {Math.ceil(filteredSchools.length/BATCH_SIZE)}
                 </div>
               </div>
             </div>
@@ -295,13 +343,6 @@ export const ClosestPlaceFinder = () => {
               processed={progress.processed} 
               total={progress.total} 
             />
-
-            {currentBatch.length > 0 && (
-              <div className="batch-details">
-                <h4>Current Batch</h4>
-                <div>{currentBatch.join(', ')}</div>
-              </div>
-            )}
 
             <div className="time-estimates">
               <div>Elapsed: {metrics.initialized ? formatTime(metrics.elapsed) : '--:--'}</div>
@@ -324,7 +365,7 @@ export const ClosestPlaceFinder = () => {
             <div className="route-selector-container">
               {allResults.map((result, index) => (
                 <div 
-                  key={`${result.school}-${result.place}`}
+                  key={`${result.school}-${result.place}-${index}`}
                   className="route-option"
                   onClick={() => {
                     setSelectedResult(result);
@@ -346,17 +387,18 @@ export const ClosestPlaceFinder = () => {
         </Modal>
       )}
 
-      {/* Single Route Map Viewer */}
+      {/* Single Route Map Viewer with Leaflet */}
       {selectedResult && (
-        <MapViewer 
+        <LeafletMapViewer 
           result={selectedResult} 
           onClose={() => setSelectedResult(null)}
         />
       )}
 
+      {/* Results Table - Showing incremental batches */}
       <ResultsTable 
-        places={places} 
-        loading={overpassLoading}
+        places={batchResults} 
+        loading={placesLoading}
         selectedAmenity={selectedAmenity}
       />
     </div>
