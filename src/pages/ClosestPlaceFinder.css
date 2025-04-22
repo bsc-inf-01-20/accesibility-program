@@ -490,3 +490,45 @@
     justify-content: center;
   }
 }
+
+/* ===== NEW SAVE BUTTON STYLES ===== */
+.dhis2-button--loading {
+  position: relative;
+  padding-left: 36px;
+}
+
+.dhis2-button--loading .dhis2-circular-loader {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Notification improvements */
+.notification-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Disabled state styling */
+button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Header help icon */
+.header-help {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+/* Error details */
+.error-details {
+  font-size: 12px;
+  white-space: pre-wrap;
+  background: rgba(0,0,0,0.05);
+  padding: 8px;
+  border-radius: 4px;
+  margin-top: 8px;
+}

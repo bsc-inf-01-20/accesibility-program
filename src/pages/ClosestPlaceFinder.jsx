@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Button, ButtonStrip, NoticeBox } from '@dhis2/ui';
+import { 
+  Button, 
+  ButtonStrip, 
+  NoticeBox, 
+  CircularLoader,
+  Help,
+  IconWarning24,
+  IconCheckmark24,
+  Tooltip
+} from '@dhis2/ui';
 import { useFetchSchools } from '../Hooks/useFetchSchools';
 import { useOverpassApi } from '../Hooks/useOverpassApi';
 import { useMapboxRouting } from '../Hooks/useMapboxRouting';
@@ -10,7 +19,7 @@ import { ProgressTracker } from '../components/ProgressTracker/ProgressTracker';
 import { ResultsTable } from '../components/ResultsTable/ResultsTable';
 import { SchoolSelector } from '../components/SchoolSelector/SchoolSelector';
 import { MapViewer } from '../components/MapViewer/MapViewer';
-import { ExportButton } from '../components/ExportButton/ExportButton'
+import { ExportButton } from '../components/ExportButton/ExportButton';
 import './ClosestPlaceFinder.css';
 
 export const ClosestPlaceFinder = () => {
@@ -26,9 +35,9 @@ export const ClosestPlaceFinder = () => {
   } = useFetchSchools();
   
   // Data processing hooks
-  const { save, loading: saving, error: saveError, response: saveResponse } = useSaveResults();
   const { processSchool, loading: overpassLoading, error: overpassError } = useOverpassApi();
   const { findClosestPlace, error: mapboxError } = useMapboxRouting();
+  const { save, loading: saving, error: saveError } = useSaveResults();
 
   // State management
   const [places, setPlaces] = useState([]);
@@ -42,14 +51,14 @@ export const ClosestPlaceFinder = () => {
   });
   const [currentBatch, setCurrentBatch] = useState([]);
   const [selectedAmenity, setSelectedAmenity] = useState(AMENITY_TYPES.MARKET);
-  const [actionTriggered, setActionTriggered] = useState(false);
   const [invalidSchools, setInvalidSchools] = useState([]);
   const [processingSpeed, setProcessingSpeed] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [notification, setNotification] = useState({ 
     show: false, 
     message: '', 
-    type: '' 
+    type: '',
+    icon: null
   });
   
   // Refs for timing
@@ -57,7 +66,7 @@ export const ClosestPlaceFinder = () => {
   const timerRef = useRef(null);
 
   // Combine errors from all sources
-  const error = schoolsError || overpassError || mapboxError;
+  const combinedError = schoolsError || overpassError || mapboxError || saveError;
 
   // Format time display
   const formatTime = (seconds) => {
@@ -99,7 +108,6 @@ export const ClosestPlaceFinder = () => {
     setInvalidSchools(invalid);
 
     // Reset state for new processing
-    setActionTriggered(true);
     setPlaces([]);
     setAllResults([]);
     setShowAllResultsMap(false);
@@ -133,16 +141,14 @@ export const ClosestPlaceFinder = () => {
               console.log(`No amenities found for ${school.displayName}`);
               return null;
             }
-            console.log(`Processing ${school.displayName} with ${amenities.length} amenities`);
             
             const result = await findClosestPlace(school, amenities, selectedAmenity);
             if (result && result.rawData) {
-              result.rawData.orgUnit = school.id; // ✅ Attach the orgUnit for DHIS2
+              result.rawData.orgUnit = school.id;
             }
             return result;
           })
         );
-        
 
         // Process results
         const validResults = results.filter(Boolean);
@@ -178,14 +184,41 @@ export const ClosestPlaceFinder = () => {
   };
 
   const handleSaveResults = async () => {
-    const result = await save(places, selectedAmenity);
-    if (result) {
-      setNotification({ show: true, message: 'Saved successfully!', type: 'success' });
-    } else {
-      setNotification({ show: true, message: 'Failed to save.', type: 'error' });
+    setNotification({ show: false, message: '', type: '', icon: null });
+
+    if (!places.length) {
+      setNotification({
+        show: true,
+        message: 'No results to save',
+        type: 'warning',
+        icon: <IconWarning24 />
+      });
+      return;
+    }
+
+    try {
+      const { success, message } = await save(places, selectedAmenity);
+      
+      setNotification({
+        show: true,
+        message: message || (success ? 'Results saved successfully to School Proximity Survey' : 'Failed to save results'),
+        type: success ? 'success' : 'error',
+        icon: success ? <IconCheckmark24 /> : <IconWarning24 />,
+        duration: 5000
+      });
+
+      if (success) {
+        // Optional post-save actions
+      }
+    } catch (err) {
+      setNotification({
+        show: true,
+        message: err.message || 'An error occurred while saving',
+        type: 'error',
+        icon: <IconWarning24 />
+      });
     }
   };
-  
 
   // Calculate map center for all results
   const calculateCenter = (coordsArray) => {
@@ -198,10 +231,14 @@ export const ClosestPlaceFinder = () => {
     ];
   };
 
-  // Render UI
   return (
     <div className="closest-place-finder">
-      <h1 className="app-header">School Proximity Analyzer</h1>
+      <h1 className="app-header">
+        School Proximity Analyzer
+        <Tooltip content="Find closest amenities to schools">
+          <Help className="header-help" />
+        </Tooltip>
+      </h1>
       
       <div className="control-panel">
         {/* School and amenity selection */}
@@ -229,68 +266,93 @@ export const ClosestPlaceFinder = () => {
         </div>
 
         {/* Action buttons */}
-        {/* Action buttons */}
-<div className="action-section">
-  <ButtonStrip className="action-buttons">
-    <Button 
-      onClick={handleFetchData}
-      disabled={overpassLoading || schoolsLoading || !filteredSchools.length}
-      primary
-    >
-      {overpassLoading ? 'Processing...' : 'Find Closest Amenities'}
-    </Button>
-    <Button
-      onClick={() => setShowAllResultsMap(!showAllResultsMap)}
-      disabled={!progress.isComplete || !allResults.length}
-      secondary
-    >
-      {showAllResultsMap ? 'Hide Map' : 'View All Results Map'}
-    </Button>
-    <ExportButton 
-      results={places} 
-      amenityType={selectedAmenity}
-      disabled={!progress.isComplete || places.length === 0}
-    />
-    <Button
-      onClick={handleSaveResults}
-      disabled={!progress.isComplete || places.length === 0 || saving}
-      primary
-    >
-      {saving ? 'Saving...' : 'Save to DHIS2'}
-    </Button>
+        <div className="action-section">
+          <ButtonStrip className="action-buttons">
+            <Button 
+              onClick={handleFetchData}
+              disabled={overpassLoading || schoolsLoading || !filteredSchools.length}
+              primary
+              icon={overpassLoading ? <CircularLoader small /> : null}
+            >
+              {overpassLoading ? 'Processing...' : 'Find Closest Amenities'}
+            </Button>
+            
+            <Button
+              onClick={() => setShowAllResultsMap(!showAllResultsMap)}
+              disabled={!progress.isComplete || !allResults.length}
+              secondary
+            >
+              {showAllResultsMap ? 'Hide Map' : 'View All Results Map'}
+            </Button>
+            
+            <ExportButton 
+              results={places} 
+              amenityType={selectedAmenity}
+              disabled={!progress.isComplete || places.length === 0}
+            />
+            
+            <Button
+              onClick={handleSaveResults}
+              disabled={!progress.isComplete || places.length === 0 || saving}
+              primary
+              icon={saving ? <CircularLoader small /> : null}
+            >
+              {saving ? (
+                <span style={{ display: 'flex', alignItems: 'center' }}>
+                  <CircularLoader small />
+                  <span style={{ marginLeft: 8 }}>Saving...</span>
+                </span>
+              ) : 'Save to DHIS2'}
+            </Button>
+          </ButtonStrip>
 
-  </ButtonStrip>
+          {/* Error display */}
+          {combinedError && !notification.show && (
+            <NoticeBox error title="Error" className="notice-item">
+              <div className="error-message">
+                {combinedError.message}
+                {combinedError.details && (
+                  <pre className="error-details">
+                    {JSON.stringify(combinedError.details, null, 2)}
+                  </pre>
+                )}
+              </div>
+            </NoticeBox>
+          )}
 
-  {/* Notifications */}
-  <div className="notice-container">
-    {error && <NoticeBox error title="Error">{error}</NoticeBox>}
-    {invalidSchools.length > 0 && (
-      <NoticeBox warning title="Notice">
-        {invalidSchools.length} schools skipped due to missing coordinates
-      </NoticeBox>
-    )}
-    {progress.isComplete && (
-      <NoticeBox success title="Complete">
-        Processed {progress.processed} schools
-      </NoticeBox>
-    )}
-    {notification.show && (
-      <NoticeBox 
-        title={notification.type === 'success' ? 'Success' : 'Error'}
-        {...(notification.type === 'success' ? { success: true } : { error: true })}
-        onHidden={() => setNotification({ show: false })}
-      >
-        {notification.message}
-      </NoticeBox>
-    )}
-  </div>
-</div>
+          {/* Notifications */}
+          {notification.show && (
+            <NoticeBox 
+              title={notification.type === 'success' ? 'Success' : 'Error'}
+              className="notice-item"
+              {...(notification.type === 'success' ? { 
+                success: true,
+                icon: notification.icon
+              } : { 
+                error: true,
+                icon: notification.icon
+              })}
+              onHidden={() => setNotification({ show: false })}
+            >
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                {notification.icon}
+                <span style={{ marginLeft: 8 }}>{notification.message}</span>
+              </div>
+            </NoticeBox>
+          )}
+        </div>
 
         {/* Progress tracking */}
         {(progress.total > 0) && (
           <div className={`progress-section ${overpassLoading ? 'is-processing' : ''}`}>
             <div className="progress-header">
-              <h3>{overpassLoading ? 'Processing...' : 'Completed'}</h3>
+              <h3>
+                {overpassLoading ? (
+                  <>
+                    Processing... <CircularLoader small />
+                  </>
+                ) : 'Completed'}
+              </h3>
               <div className="progress-metrics">
                 <div>Processed: {progress.processed}/{progress.total}</div>
                 <div>Speed: {processingSpeed.toFixed(1)} schools/sec</div>
