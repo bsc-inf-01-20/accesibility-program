@@ -37,7 +37,7 @@ export const ClosestPlaceFinder = () => {
   // Data processing hooks
   const { processSchool, loading: overpassLoading, error: overpassError } = useOverpassApi();
   const { findClosestPlace, error: mapboxError } = useMapboxRouting();
-  const { save, loading: saving, error: saveError } = useSaveResults();
+  const { save, saving, error: saveError } = useSaveResults();
 
   // State management
   const [places, setPlaces] = useState([]);
@@ -184,39 +184,28 @@ export const ClosestPlaceFinder = () => {
   };
 
   const handleSaveResults = async () => {
-    setNotification({ show: false, message: '', type: '', icon: null });
+    setNotification({ show: false });
 
     if (!places.length) {
       setNotification({
         show: true,
         message: 'No results to save',
-        type: 'warning',
-        icon: <IconWarning24 />
+        type: 'warning'
       });
       return;
     }
 
-    try {
-      const { success, message } = await save(places, selectedAmenity);
-      
-      setNotification({
-        show: true,
-        message: message || (success ? 'Results saved successfully to School Proximity Survey' : 'Failed to save results'),
-        type: success ? 'success' : 'error',
-        icon: success ? <IconCheckmark24 /> : <IconWarning24 />,
-        duration: 5000
-      });
+    const { success, message } = await save(places, selectedAmenity);
 
-      if (success) {
-        // Optional post-save actions
-      }
-    } catch (err) {
-      setNotification({
-        show: true,
-        message: err.message || 'An error occurred while saving',
-        type: 'error',
-        icon: <IconWarning24 />
-      });
+    setNotification({
+      show: true,
+      message: message || (success ? 'Data saved successfully' : 'Save failed'),
+      type: success ? 'success' : 'error',
+      duration: 5000
+    });
+
+    if (saveError) {
+      console.error('Save error details:', saveError);
     }
   };
 
@@ -241,6 +230,10 @@ export const ClosestPlaceFinder = () => {
       </h1>
       
       <div className="control-panel">
+
+
+
+        
         {/* School and amenity selection */}
         <div className="selection-section">
           <SchoolSelector 
@@ -292,18 +285,14 @@ export const ClosestPlaceFinder = () => {
             />
             
             <Button
-              onClick={handleSaveResults}
-              disabled={!progress.isComplete || places.length === 0 || saving}
-              primary
-              icon={saving ? <CircularLoader small /> : null}
-            >
-              {saving ? (
-                <span style={{ display: 'flex', alignItems: 'center' }}>
-                  <CircularLoader small />
-                  <span style={{ marginLeft: 8 }}>Saving...</span>
-                </span>
-              ) : 'Save to DHIS2'}
-            </Button>
+                onClick={handleSaveResults}
+                disabled={!progress.isComplete || places.length === 0 || saving}
+                primary
+                loading={saving}
+                loadingText={saveError?.includes('conflict') ? 'Resolving conflict...' : 'Saving...'}
+              >
+                {saveError?.includes('conflict') ? 'Retry Save' : 'Save to DHIS2'}
+              </Button>
           </ButtonStrip>
 
           {/* Error display */}
