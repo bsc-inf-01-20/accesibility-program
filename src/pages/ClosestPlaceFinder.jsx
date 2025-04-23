@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button, ButtonStrip, NoticeBox, Modal, ModalTitle, ModalContent, ModalActions } from '@dhis2/ui';
 import { useFetchSchools } from '../Hooks/useFetchSchools';
 import { useGooglePlacesApi } from '../Hooks/useGooglePlacesApi';
@@ -58,90 +58,9 @@ export const ClosestPlaceFinder = () => {
     total: 0,
     isComplete: false 
   });
-  
-  // Metrics tracking
-  const [metrics, setMetrics] = useState({
-    speed: 0,
-    elapsed: 0,
-    remaining: 0,
-    initialized: false
-  });
-
-  // Refs
-  const metricsRef = useRef({
-    startTime: null,
-    lastUpdate: null,
-    lastProcessed: 0
-  });
-  const metricsIntervalRef = useRef(null);
 
   // Combine errors from all sources
   const error = schoolsError || placesError || routingError;
-
-  // Format time display
-  const formatTime = (seconds) => {
-    if (isNaN(seconds)) return '--:--';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // Metrics calculation effect
-  useEffect(() => {
-    if (placesLoading && !metricsRef.current.startTime) {
-      metricsRef.current = {
-        startTime: Date.now(),
-        lastUpdate: Date.now(),
-        lastProcessed: progress.processed
-      };
-      
-      setMetrics({
-        speed: 0,
-        elapsed: 0,
-        remaining: 0,
-        initialized: true
-      });
-
-      metricsIntervalRef.current = setInterval(() => {
-        const now = Date.now();
-        const elapsedSeconds = (now - metricsRef.current.startTime) / 1000;
-        
-        const processedDelta = progress.processed - metricsRef.current.lastProcessed;
-        const timeDelta = (now - metricsRef.current.lastUpdate) / 1000;
-        const currentSpeed = timeDelta > 0 ? processedDelta / timeDelta : 0;
-
-        const remainingSchools = progress.total - progress.processed;
-        const remainingTime = currentSpeed > 0 ? remainingSchools / currentSpeed : 0;
-
-        setMetrics(prev => ({
-          speed: currentSpeed > 0 ? (prev.speed * 0.7 + currentSpeed * 0.3) : currentSpeed,
-          elapsed: elapsedSeconds,
-          remaining: remainingTime > 0 ? remainingTime : 0,
-          initialized: true
-        }));
-
-        metricsRef.current = {
-          ...metricsRef.current,
-          lastUpdate: now,
-          lastProcessed: progress.processed
-        };
-      }, 1000);
-    } else if (!placesLoading && metricsIntervalRef.current) {
-      clearInterval(metricsIntervalRef.current);
-      metricsIntervalRef.current = null;
-      metricsRef.current = {
-        startTime: null,
-        lastUpdate: null,
-        lastProcessed: 0
-      };
-    }
-
-    return () => {
-      if (metricsIntervalRef.current) {
-        clearInterval(metricsIntervalRef.current);
-      }
-    };
-  }, [placesLoading, progress.processed, progress.total]);
 
   const processSchoolBatch = async (school, amenityType) => {
     try {
@@ -327,11 +246,6 @@ export const ClosestPlaceFinder = () => {
               <h3>{placesLoading ? 'Processing...' : 'Completed'}</h3>
               <div className="progress-metrics">
                 <div>Processed: {progress.processed}/{progress.total}</div>
-                <div>
-                  Speed: {metrics.initialized ? 
-                    (metrics.speed > 0 ? metrics.speed.toFixed(1) + ' schools/sec' : 'Starting...') 
-                    : '--'}
-                </div>
                 <div className="batch-progress">
                   Batch {Math.floor(currentBatchIndex/BATCH_SIZE) + 1}/
                   {Math.ceil(filteredSchools.length/BATCH_SIZE)}
@@ -343,12 +257,6 @@ export const ClosestPlaceFinder = () => {
               processed={progress.processed} 
               total={progress.total} 
             />
-
-            <div className="time-estimates">
-              <div>Elapsed: {metrics.initialized ? formatTime(metrics.elapsed) : '--:--'}</div>
-              <div>Remaining: {metrics.initialized && metrics.speed > 0 ? 
-                formatTime(metrics.remaining) : '--:--'}</div>
-            </div>
           </div>
         )}
       </div>
@@ -389,10 +297,14 @@ export const ClosestPlaceFinder = () => {
 
       {/* Single Route Map Viewer with Leaflet */}
       {selectedResult && (
-        <LeafletMapViewer 
-          result={selectedResult} 
-          onClose={() => setSelectedResult(null)}
-        />
+        <>
+          <div className={`map-overlay ${selectedResult ? 'active' : ''}`} 
+              onClick={() => setSelectedResult(null)} />
+          <LeafletMapViewer 
+            result={selectedResult} 
+            onClose={() => setSelectedResult(null)}
+          />
+        </>
       )}
 
       {/* Results Table - Showing incremental batches */}

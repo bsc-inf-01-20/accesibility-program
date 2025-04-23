@@ -143,3 +143,43 @@
     gap: 8px;
   }
 }
+/* Map Overlay Styles */
+.map-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  z-index: 999; /* Below the map popup but above everything else */
+  backdrop-filter: blur(2px);
+  transition: opacity 0.3s ease;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.map-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Ensure map popup has higher z-index */
+.leaflet-popup-container {
+  z-index: 1000;
+}
+
+/* Animation for map appearance */
+@keyframes popupFadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.leaflet-popup-container {
+  animation: popupFadeIn 0.2s ease-out forwards;
+}
