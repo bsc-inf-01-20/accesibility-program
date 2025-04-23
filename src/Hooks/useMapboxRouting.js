@@ -1,10 +1,9 @@
 import { useState } from 'react';
-
-const MAPBOX_ACCESS_TOKEN = "pk.eyJ1IjoiZmFyZ28yMTkiLCJhIjoiY205Y25xajJxMHJlbzJpc2M4bjhhdm9hZCJ9.xhoZP4Gr0_3yo6N9EBnD_w";
+import axios from 'axios';
+import { MAPBOX_ACCESS_TOKEN } from '../utils/constants';
 
 const formatDuration = (seconds) => {
   const totalMinutes = Math.round(seconds / 60);
-  
   if (totalMinutes >= 60) {
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
@@ -26,67 +25,75 @@ export const useMapboxRouting = () => {
       return null;
     }
 
-    const [lon, lat] = school.geometry.coordinates;
-    console.log(`\n=== Processing School: ${school.displayName} @ ${lon},${lat} ===`);
+    const [schoolLng, schoolLat] = school.geometry.coordinates;
+    console.log(`\n=== Processing School: ${school.displayName} @ ${schoolLng},${schoolLat} ===`);
 
-    if (!places || !places.length) {
-      console.log("No amenities found for this school");
+    if (!places || places.length === 0) {
+      console.warn(`No ${amenityType?.label || amenityType} places found for ${school.displayName}`);
       return null;
     }
 
     try {
       const results = await Promise.all(
         places.map(async (place) => {
-          const routeQuery = `https://api.mapbox.com/directions/v5/mapbox/walking/${lon},${lat};${place.lon},${place.lat}?access_token=${MAPBOX_ACCESS_TOKEN}&geometries=geojson&overview=full`;
+          const placeLat = place.location?.lat;
+          const placeLng = place.location?.lng;
 
-          const response = await fetch(routeQuery);
-          const data = await response.json();
-
-          if (data.code !== "Ok") {
-            console.error(`Failed to get route for ${place.name}`);
+          if (placeLat == null || placeLng == null) {
+            console.warn('Skipping place with missing coordinates:', place.name);
             return null;
           }
 
-          const route = data.routes[0];
-          const distance = route.distance / 1000; // kilometers
-          const duration = route.duration; // seconds
+          try {
+            const response = await axios.get(
+              `https://api.mapbox.com/directions/v5/mapbox/walking/${schoolLng},${schoolLat};${placeLng},${placeLat}`,
+              {
+                params: {
+                  access_token: MAPBOX_ACCESS_TOKEN,
+                  geometries: 'geojson',
+                  overview: 'full',
+                },
+              }
+            );
 
-          return {
-            place,
-            distance,
-            duration,
-            routeGeometry: route.geometry,
-            routeInstructions: route.legs[0].steps,
-          };
+            const route = response.data.routes?.[0];
+            if (!route) {
+              console.warn(`No valid route for ${place.name}`);
+              return null;
+            }
+
+            return {
+              school: school.displayName,
+              place: place.name,
+              distance: route.distance / 1000,
+              duration: route.duration,
+              time: formatDuration(route.duration),
+              route: route.geometry,
+              routeInstructions: route.legs?.[0]?.steps || [],
+              rawData: {
+                schoolCoords: [schoolLng, schoolLat],
+                placeCoords: [placeLng, placeLat],
+                distanceMeters: route.distance,
+                durationSeconds: route.duration,
+              },
+            };
+          } catch (err) {
+            console.error(`Failed to get route for ${place.name}`, err);
+            return null;
+          }
         })
       );
 
       const validResults = results.filter(Boolean);
-
-      if (!validResults.length) {
-        return null;
-      }
+      if (!validResults.length) return null;
 
       const closest = validResults.reduce((min, curr) =>
         curr.distance < min.distance ? curr : min
       );
 
-      return {
-        school: school.displayName,
-        place: closest.place.name,
-        distance: closest.distance.toFixed(2),
-        time: formatDuration(closest.duration),
-        route: closest.routeGeometry,
-        routeInstructions: closest.routeInstructions,
-        rawData: {
-          schoolCoords: [lon, lat],
-          placeCoords: [closest.place.lon, closest.place.lat],
-          distanceMeters: closest.distance * 1000,
-          durationSeconds: closest.duration,
-        },
-      };
+      return closest;
     } catch (err) {
-      console.error(`Error processing ${school.displayName}:`, err);
+      console.error('Routing error:', err);
       setError(`Error processing ${school.displayName}: ${err.message}`);
       return null;
     }

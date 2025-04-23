@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import 'leaflet.markercluster';
 
 const iconRetinaUrl = new URL('leaflet/dist/images/marker-icon-2x.png', import.meta.url).href;
 const iconUrl = new URL('leaflet/dist/images/marker-icon.png', import.meta.url).href;
@@ -14,20 +13,17 @@ L.Icon.Default.mergeOptions({
   shadowUrl,
 });
 
-const routeColors = ['blue', 'green', 'purple', 'red', 'orange', 'brown', 'magenta'];
-
 const useLeafletMap = (containerRef, results) => {
   const mapRef = useRef(null);
-  const clusterRef = useRef(null);
 
   useEffect(() => {
     if (!containerRef.current || !results?.length) return;
 
     const initMap = () => {
       if (mapRef.current) mapRef.current.remove();
-      if (clusterRef.current) clusterRef.current.clearLayers();
 
-      const [lng, lat] = results[0].rawData.schoolCoords;
+      const result = results[0];
+      const [lng, lat] = result.rawData.schoolCoords;
       const map = L.map(containerRef.current).setView([lat, lng], 13);
       mapRef.current = map;
 
@@ -36,61 +32,63 @@ const useLeafletMap = (containerRef, results) => {
         { attribution: '&copy; OpenStreetMap contributors' }
       ).addTo(map);
 
-      const clusterGroup = L.markerClusterGroup({
-        chunkedLoading: true,
-        maxClusterRadius: 40,
-        disableClusteringAtZoom: 18
-      });
-      clusterRef.current = clusterGroup;
+      const { schoolCoords, placeCoords } = result.rawData;
+      const schoolLatLng = [schoolCoords[1], schoolCoords[0]];
+      const placeLatLng = [placeCoords[1], placeCoords[0]];
 
-      const bounds = L.latLngBounds([]);
+      // School marker with custom icon
+      const schoolMarker = L.marker(schoolLatLng, {
+        icon: L.divIcon({
+          className: 'custom-icon school-icon',
+          html: '🏫',
+          iconSize: [30, 30]
+        })
+      }).bindPopup(`<b>School:</b> ${result.school}`);
 
-      results.forEach((result, i) => {
-        const { schoolCoords, placeCoords } = result.rawData;
-        const schoolLatLng = [schoolCoords[1], schoolCoords[0]];
-        const placeLatLng = [placeCoords[1], placeCoords[0]];
+      // Amenity marker with custom icon
+      const amenityMarker = L.marker(placeLatLng, {
+        icon: L.divIcon({
+          className: 'custom-icon place-icon',
+          html: result.place.includes('Hospital') ? '🏥' : '🏪',
+          iconSize: [30, 30]
+        })
+      }).bindPopup(`<b>${result.place}</b>`);
 
-        bounds.extend(schoolLatLng);
-        bounds.extend(placeLatLng);
+      schoolMarker.addTo(map);
+      amenityMarker.addTo(map);
 
-        const schoolMarker = L.marker(schoolLatLng).bindPopup(
-          `<b>School:</b> ${result.school}<br/>
-           <b>Amenity:</b> ${result.place}<br/>
-           <b>Distance:</b> ${result.distance} km<br/>
-           <b>Time:</b> ${result.time}`
-        );
-        const amenityMarker = L.marker(placeLatLng).bindPopup(
-          `<b>Amenity:</b> ${result.place}`
-        );
+      // Add route if available
+      if (result.route) {
+        L.geoJSON(result.route, {
+          style: {
+            color: 'blue',
+            weight: 5,
+            opacity: 0.7,
+          }
+        }).addTo(map);
+      }
 
-        clusterGroup.addLayer(schoolMarker);
-        clusterGroup.addLayer(amenityMarker);
-
-        if (result.route) {
-          const routeColor = routeColors[i % routeColors.length];
-          L.geoJSON(result.route, {
-            style: {
-              color: routeColor,
-              weight: 3,
-              opacity: 0.7,
-            },
-            onEachFeature: (feature, layer) => {
-              layer.bindTooltip(`Route (${routeColor})`, { sticky: true });
-            }
-          }).addTo(map);
-        }
-      });
-
-      clusterGroup.addTo(map);
-      if (bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50] });
+      // Fit bounds to show both markers and route
+      const bounds = L.latLngBounds([schoolLatLng, placeLatLng]);
+      if (result.route) {
+        result.route.features.forEach(feature => {
+          const coords = feature.geometry.coordinates;
+          coords.forEach(coord => {
+            bounds.extend([coord[1], coord[0]]);
+          });
+        });
+      }
+      map.fitBounds(bounds, { padding: [50, 50] });
     };
 
     const timer = setTimeout(initMap, 300);
 
     return () => {
       clearTimeout(timer);
-      if (mapRef.current) mapRef.current.remove();
-      if (clusterRef.current) clusterRef.current.clearLayers();
+      if (mapRef.current) {
+        mapRef.current.off();
+        mapRef.current.remove();
+      }
     };
   }, [results, containerRef.current]);
 };

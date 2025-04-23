@@ -1,0 +1,10 @@
+.amenity-selector {
+    margin: 16px 0;
+    min-width: 250px;
+  }
+  
+  .amenity-selector label {
+    font-weight: bold;
+    margin-bottom: 8px;
+    display: block;
+  }
