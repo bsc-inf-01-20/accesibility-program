@@ -17,7 +17,13 @@ export const useGooglePlacesApi = () => {
     try {
       setLoading(true);
       setError(null);
-  
+
+      // SPECIAL HANDLING FOR MARKETS
+      if (amenityType === 'market') {
+        return await fetchMalawiMarkets(lat, lng);
+      }
+
+      // Standard handling for other amenity types
       const apiEndpoint = "http://localhost:5000/api/places/search";
       const amenityConfig = AMENITY_TYPES[amenityType] || amenityType;
       
@@ -27,33 +33,9 @@ export const useGooglePlacesApi = () => {
         radius: 5000,
         ...(amenityConfig.keyword ? { query: amenityConfig.keyword } : { type: amenityConfig.queryTag })
       };
-  
+
       const response = await axios.get(apiEndpoint, { params: searchParams });
-      
-      if (response.data.status !== "OK") {
-        throw new Error(response.data.error_message || "API returned non-OK status");
-      }
-  
-      // Process places with proper validation
-      const places = (response.data.results || []).map(place => {
-        if (!place.location || !place.location.lat || !place.location.lng) {
-          console.warn('Place missing location data:', place.name);
-          return null;
-        }
-  
-        return {
-          id: place.id,
-          name: place.name,
-          location: place.location,
-          address: place.address,
-          types: place.types,
-          rating: place.rating,
-          user_ratings_total: place.user_ratings_total
-        };
-      }).filter(Boolean);
-  
-      console.log(`Found ${places.length} valid places for ${school.displayName}`);
-      return places;
+      return processApiResponse(response, school.displayName);
   
     } catch (err) {
       console.error('Places API Error:', err);
@@ -62,6 +44,45 @@ export const useGooglePlacesApi = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Special function for Malawi markets
+  const fetchMalawiMarkets = async (lat, lng) => {
+    try {
+      const response = await axios.get("http://localhost:5000/api/places/malawi-markets", {
+        params: { lat, lng, radius: 5000 }
+      });
+      return processApiResponse(response, "markets");
+    } catch (err) {
+      throw new Error(`Market search failed: ${err.message}`);
+    }
+  };
+
+  // Shared response processing
+  const processApiResponse = (response, context) => {
+    if (response.data.status !== "OK") {
+      throw new Error(response.data.error_message || "API returned non-OK status");
+    }
+
+    const places = (response.data.results || []).map(place => {
+      if (!place.location || !place.location.lat || !place.location.lng) {
+        console.warn('Place missing location data:', place.name);
+        return null;
+      }
+
+      return {
+        id: place.id,
+        name: place.name,
+        location: place.location,
+        address: place.address,
+        types: place.types,
+        rating: place.rating,
+        user_ratings_total: place.user_ratings_total
+      };
+    }).filter(Boolean);
+
+    console.log(`Found ${places.length} valid places for ${context}`);
+    return places;
   };
 
   return {

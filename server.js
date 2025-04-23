@@ -1,5 +1,6 @@
 const express = require('express');
 const axios = require('axios');
+const https = require('https');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
@@ -18,7 +19,7 @@ app.use(cors({
 app.use(express.json());
 app.use(morgan('dev'));
 
-// Rate limiting (100 requests per 15 minutes)
+// Rate limiting (1000 requests per 15 minutes)
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000,
@@ -30,8 +31,9 @@ app.use('/api/', apiLimiter);
 // Constants
 // ======================
 const MAX_RADIUS = 50000; // 50km
-const DEFAULT_RADIUS = 5000; // 5km (increased from 3km)
-const API_TIMEOUT = 10000; // 10 seconds (increased timeout)
+const DEFAULT_RADIUS = 5000;
+const API_TIMEOUT = 20000; // 20 seconds
+const ipv4Agent = new https.Agent({ family: 4 }); // Force IPv4
 
 // ======================
 // Helper Functions
@@ -50,19 +52,18 @@ const sanitizeInput = (input) => {
 // API Routes
 // ======================
 
-// Unified Places Search Endpoint
+// Unified Places Search
 app.get('/api/places/search', async (req, res) => {
   try {
     const { lat, lng, type, query, radius = DEFAULT_RADIUS } = req.query;
-    
+
     if (!validateCoordinates(lat, lng)) {
       return res.status(400).json({ error: 'Invalid coordinates' });
     }
 
     let googleUrl, params;
-    
+
     if (query) {
-      // Text search
       googleUrl = 'https://maps.googleapis.com/maps/api/place/textsearch/json';
       params = {
         query: sanitizeInput(query),
@@ -71,12 +72,11 @@ app.get('/api/places/search', async (req, res) => {
         key: process.env.GOOGLE_MAPS_API_KEY
       };
     } else if (type) {
-      // Nearby search
       googleUrl = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json';
       params = {
+        type: sanitizeInput(type),
         location: `${lat},${lng}`,
         radius: Math.min(Number(radius), MAX_RADIUS),
-        type: sanitizeInput(type).toLowerCase(),
         key: process.env.GOOGLE_MAPS_API_KEY
       };
     } else {
@@ -85,7 +85,8 @@ app.get('/api/places/search', async (req, res) => {
 
     const response = await axios.get(googleUrl, {
       params,
-      timeout: API_TIMEOUT
+      timeout: API_TIMEOUT,
+      httpsAgent: ipv4Agent
     });
 
     handleGoogleResponse(response, res);
@@ -94,35 +95,31 @@ app.get('/api/places/search', async (req, res) => {
   }
 });
 
-// Malawi-specific market search
+// Malawi Markets Search
+// Malawi Markets Search - Focused on local and big markets
 app.get('/api/places/malawi-markets', async (req, res) => {
   try {
     const { lat, lng, radius = 10000 } = req.query;
-    
+
     if (!validateCoordinates(lat, lng)) {
       return res.status(400).json({ error: 'Invalid coordinates' });
     }
 
-    // Try multiple search strategies
+    // Specific search attempts focused on markets
     const searchAttempts = [
-      {
-        type: 'grocery_or_supermarket',
-        keyword: 'market'
-      },
-      {
-        query: 'local market OR tuck shop OR grocery'
-      },
-      {
-        query: 'shop OR store OR supplies'
-      },
-      {
-        query: 'buy OR sell OR food'
-      }
+      { query: 'local market OR flea market OR bazaar' },  // Local markets
+      { query: 'central market OR big market OR main market' },  // Big markets
+      { type: 'shopping_mall' },  // Sometimes big markets are classified as malls
+      { type: 'grocery_or_supermarket', keyword: 'market' },  // Fallback
+      { query: 'market' }  // Final broad search
     ];
+
+    const allResults = [];
+    const seenPlaceIds = new Set();
 
     for (const attempt of searchAttempts) {
       try {
-        const googleUrl = attempt.type 
+        const googleUrl = attempt.type
           ? 'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
           : 'https://maps.googleapis.com/maps/api/place/textsearch/json';
 
@@ -133,18 +130,47 @@ app.get('/api/places/malawi-markets', async (req, res) => {
             radius: Math.min(Number(radius), MAX_RADIUS),
             key: process.env.GOOGLE_MAPS_API_KEY
           },
-          timeout: API_TIMEOUT
+          timeout: API_TIMEOUT,
+          httpsAgent: ipv4Agent
         });
 
         if (response.data.results?.length > 0) {
-          return handleGoogleResponse(response, res);
+          // Deduplicate results and add to collection
+          response.data.results.forEach(place => {
+            if (!seenPlaceIds.has(place.place_id)) {
+              seenPlaceIds.add(place.place_id);
+              allResults.push(place);
+            }
+          });
         }
       } catch (err) {
         console.warn(`Search attempt failed:`, attempt);
       }
     }
 
-    return res.status(404).json({ 
+    if (allResults.length > 0) {
+      // Filter to ensure we're only getting market-like places
+      const marketResults = allResults.filter(place => {
+        const name = place.name.toLowerCase();
+        const types = place.types || [];
+        
+        return (
+          name.includes('market') ||
+          types.some(t => t.includes('market')) ||
+          name.includes('bazaar') ||
+          (types.includes('shopping_mall') && name.includes('market'))
+        );
+      });
+
+      return handleGoogleResponse({
+        data: {
+          status: 'OK',
+          results: marketResults
+        }
+      }, res);
+    }
+
+    return res.status(404).json({
       status: 'ZERO_RESULTS',
       message: 'No markets found after multiple search attempts'
     });
@@ -152,27 +178,18 @@ app.get('/api/places/malawi-markets', async (req, res) => {
     handleApiError(err, res, 'Malawi Markets Error');
   }
 });
-
-// Directions Endpoint
-// Directions Endpoint with enhanced features
-// Directions Endpoint - Modified version
+// Directions API Proxy
 app.get('/api/directions', async (req, res) => {
   try {
-    const { 
-      origin, 
-      destination, 
-      mode = 'walking'
-    } = req.query;
-    
-    // Validate required parameters
+    const { origin, destination, mode = 'walking' } = req.query;
+
     if (!origin || !destination) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Missing origin/destination',
         example: '/api/directions?origin=-15.397721,35.314147&destination=-15.396523,35.3095214'
       });
     }
 
-    // Validate mode
     const validModes = ['walking', 'driving', 'bicycling', 'transit'];
     if (!validModes.includes(mode)) {
       return res.status(400).json({
@@ -187,13 +204,13 @@ app.get('/api/directions', async (req, res) => {
         origin,
         destination,
         mode,
-        key: process.env.GOOGLE_MAPS_API_KEY,
-        alternatives: false
+        alternatives: false,
+        key: process.env.GOOGLE_MAPS_API_KEY
       },
-      timeout: API_TIMEOUT
+      timeout: API_TIMEOUT,
+      httpsAgent: ipv4Agent
     });
 
-    // Return the COMPLETE, UNMODIFIED Google response
     if (response.data.status === 'OK') {
       res.json(response.data);
     } else {
@@ -202,13 +219,13 @@ app.get('/api/directions', async (req, res) => {
         status: response.data.status
       });
     }
-
   } catch (err) {
     handleApiError(err, res, 'Directions API Error');
   }
 });
+
 // ======================
-// Response Handlers
+// Helpers
 // ======================
 const handleGoogleResponse = (response, res) => {
   if (response.data.status !== 'OK') {
@@ -217,8 +234,7 @@ const handleGoogleResponse = (response, res) => {
       status: response.data.status
     });
   }
-  
-  // Transform the response for better frontend consumption
+
   const transformed = {
     status: 'OK',
     results: (response.data.results || []).map(place => ({
@@ -231,38 +247,34 @@ const handleGoogleResponse = (response, res) => {
       user_ratings_total: place.user_ratings_total
     }))
   };
-  
+
   res.json(transformed);
 };
 
 const handleApiError = (err, res, context) => {
   console.error(`${context}:`, err);
-  
+
   if (err.response) {
-    return res.status(502).json({ 
+    return res.status(502).json({
       error: err.response.data.error_message || 'Bad gateway to Google API',
       details: err.response.data
     });
   } else if (err.request) {
-    return res.status(504).json({ 
-      error: 'Timeout communicating with Google API' 
+    return res.status(504).json({
+      error: 'Timeout communicating with Google API'
     });
   } else {
-    return res.status(500).json({ 
-      error: 'Internal server error processing request' 
+    return res.status(500).json({
+      error: 'Internal server error processing request'
     });
   }
 };
 
 // ======================
-// Server Startup
+// Start Server
 // ======================
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Proxy server running on port ${PORT}`);
   console.log(`🌍 Allowed origins: ${process.env.ALLOWED_ORIGINS || 'All'}`);
-  console.log('Available endpoints:');
-  console.log(`- GET /api/places/search?lat&lng&[type|query]&radius`);
-  console.log(`- GET /api/places/malawi-markets?lat&lng&radius`);
-  console.log(`- GET /api/directions?origin&destination&mode`);
 });
