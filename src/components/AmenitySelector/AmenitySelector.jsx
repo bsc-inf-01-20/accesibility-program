@@ -8,6 +8,7 @@ export const AmenitySelector = ({ selectedType, onChange, options }) => {
 
   return (
     <div className="amenity-selector">
+      <label>Amenity Type</label>
       <SingleSelect
         selected={selectedType?.key || ''}
         onChange={({ selected }) => {

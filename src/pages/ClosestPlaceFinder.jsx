@@ -10,6 +10,7 @@ import { ResultsTable } from '../components/ResultsTable/ResultsTable';
 import { SchoolSelector } from '../components/SchoolSelector/SchoolSelector';
 import { LeafletMapViewer } from '../components/MapViewer/LeafletMapViewer';
 import './ClosestPlaceFinder.css';
+import { TravelModeSelector } from '../components/TravelModeSelector/TravelModeSelector';
 
 export const ClosestPlaceFinder = () => {
   // School selection hooks
@@ -48,6 +49,7 @@ export const ClosestPlaceFinder = () => {
   const [invalidSchools, setInvalidSchools] = useState([]);
   const [noResultsSchools, setNoResultsSchools] = useState([]);
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
+  const [selectedTravelMode, setSelectedTravelMode] = useState('walking');
   
   // Batch processing config
   const BATCH_SIZE = 3;
@@ -64,7 +66,6 @@ export const ClosestPlaceFinder = () => {
 
   const processSchoolBatch = async (school, amenityType) => {
     try {
-      // 1. Find nearby places
       const foundPlaces = await processSchool(school, amenityType);
       const validPlaces = foundPlaces?.filter(p => p?.location?.lat && p?.location?.lng) || [];
       
@@ -72,36 +73,31 @@ export const ClosestPlaceFinder = () => {
         setNoResultsSchools(prev => [...prev, school.displayName]);
         return null;
       }
-
-      // 2. Find closest place
+  
       const closest = await findClosestPlace(
-        {
-          ...school,
-          geometry: {
-            coordinates: school.geometry.coordinates
-          }
-        },
+        school,
         validPlaces,
-        amenityType
+        amenityType,
+        selectedTravelMode
       );
-
+  
+      console.log('Processed school result:', { // Debug log
+        school: school.displayName,
+        closest: closest ? { 
+          ...closest, 
+          hasTravelMode: !!closest.travelMode 
+        } : null
+      });
+  
       if (!closest) return null;
-
+  
+      // Ensure all properties are preserved
       return {
+        ...closest, // Spread ALL properties from the closest result first
         school: school.displayName,
         schoolId: school.id,
-        place: closest.place,
-        distance: closest.distance,
-        duration: closest.duration,
-        time: closest.time,
-        overviewPolyline: closest.overviewPolyline,
-        steps: closest.steps,
-        location: closest.location,
-        schoolLocation: closest.schoolLocation,
-        bounds: closest.bounds,
         batchId: currentBatchIndex
       };
-
     } catch (err) {
       console.error(`Error processing ${school.displayName}:`, err);
       return null;
@@ -111,7 +107,7 @@ export const ClosestPlaceFinder = () => {
   const handleFetchData = async () => {
     const isLoading = schoolsLoading || placesLoading || routingLoading;
     if (isLoading || filteredSchools.length === 0) return;
-
+  
     // Filter schools with valid coordinates
     const validSchools = filteredSchools.filter(school => {
       const coords = school?.geometry?.coordinates;
@@ -121,10 +117,11 @@ export const ClosestPlaceFinder = () => {
       }
       return hasValidCoords;
     });
-
+  
+    // Handle invalid schools
     const invalid = filteredSchools.filter(school => !validSchools.includes(school));
     setInvalidSchools(invalid);
-
+  
     // Reset state
     setActionTriggered(true);
     setPlaces([]);
@@ -138,21 +135,55 @@ export const ClosestPlaceFinder = () => {
       total: validSchools.length,
       isComplete: false
     });
-
+  
+    console.log('Starting search with travel mode:', selectedTravelMode); // Debug log
+  
     try {
       // Process in batches
       for (let i = 0; i < validSchools.length; i += BATCH_SIZE) {
         const batch = validSchools.slice(i, i + BATCH_SIZE);
         setCurrentBatchIndex(i);
-        
-        const batchPromises = batch.map(school => 
-          processSchoolBatch(school, selectedAmenity)
-        );
-
+  
+        console.log(`Processing batch ${i/BATCH_SIZE + 1} of ${Math.ceil(validSchools.length/BATCH_SIZE)}`); // Debug log
+  
+        const batchPromises = batch.map(school => {
+          console.log(`Processing ${school.displayName} with mode:`, selectedTravelMode); // Debug log
+          return processSchoolBatch(school, selectedAmenity);
+        });
+  
         const results = await Promise.all(batchPromises);
+        
+        // Enhanced debug logging
+        console.log('Batch results:', {
+          count: results.length,
+          withTravelMode: results.filter(r => r?.travelMode).length,
+          modes: results.map(r => r?.travelMode || 'missing'),
+          sample: results.length > 0 ? {
+            school: results[0]?.school,
+            place: results[0]?.place,
+            mode: results[0]?.travelMode,
+            distance: results[0]?.distance
+          } : null
+        });
+  
         const validResults = results.filter(Boolean);
         
-        setBatchResults(prev => [...prev, ...validResults]);
+        console.log('Valid results:', validResults.map(r => ({
+          school: r.school,
+          place: r.place,
+          mode: r.travelMode,
+          expectedMode: selectedTravelMode
+        })));
+  
+        setBatchResults(prev => {
+          const newResults = [...prev, ...validResults];
+          console.log('Updating batchResults:', {
+            totalResults: newResults.length,
+            modes: newResults.map(r => r.travelMode)
+          });
+          return newResults;
+        });
+  
         setPlaces(prev => [...prev, ...validResults]);
         setAllResults(prev => [...prev, ...validResults]);
         setProgress(prev => ({
@@ -160,15 +191,34 @@ export const ClosestPlaceFinder = () => {
           processed: i + batch.length,
           isComplete: i + batch.length >= validSchools.length
         }));
-        
+  
         // Small delay between batches for better UX
         await new Promise(resolve => setTimeout(resolve, 300));
       }
     } catch (err) {
-      console.error('Batch processing error:', err);
+      console.error('Batch processing error:', {
+        error: err.message,
+        travelMode: selectedTravelMode,
+        stack: err.stack
+      });
       setError(`Processing failed: ${err.message}`);
+    } finally {
+      console.log('Batch processing completed', {
+        totalResults: allResults.length,
+        modes: allResults.map(r => r.travelMode)
+      });
     }
   };
+  console.log('ResultsTable data:', {
+    batchResults: batchResults.map(r => ({
+      school: r.school,
+      place: r.place, 
+      travelMode: r.travelMode, // Check if this exists and is correct
+      hasTravelMode: !!r.travelMode // Will be true if travelMode exists
+    })),
+    selectedTravelMode // Should match what you selected in the UI
+  });
+  
 
   return (
     <div className="closest-place-finder">
@@ -198,6 +248,11 @@ export const ClosestPlaceFinder = () => {
             options={Object.values(AMENITY_TYPES)}
           />
         </div>
+        {/*travel mode */}
+        <TravelModeSelector 
+        selectedMode={selectedTravelMode}
+        onChange={setSelectedTravelMode}
+      />
 
         {/* Action buttons */}
         <div className="action-section">
