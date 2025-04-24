@@ -5,13 +5,17 @@
   "license": "BSD-3-Clause",
   "private": true,
   "scripts": {
-    "build": "d2-app-scripts build",
-    "start": "concurrently \"d2-app-scripts start --proxy https://project.ccdev.org/emis\" \"node server.js\"",
-    "test": "d2-app-scripts test",
-    "deploy": "d2-app-scripts deploy",
-    "format": "prettier --write src/**/*.{js,jsx,json,css}",
-    "lint": "eslint src"
-  },
+  "start": "concurrently -n CLIENT,SERVER -c bgBlue.bold,bgGreen.bold \"yarn start:client\" \"yarn start:server\"",
+  "start:client": "d2-app-scripts start --proxy https://project.ccdev.org/emis",
+  "start:server": "nodemon server/server.js",
+  "server": "node server/server.js", 
+  "build": "d2-app-scripts build",
+  "test": "d2-app-scripts test",
+  "lint": "eslint .",
+  "format": "prettier --write .",
+  "prepare": "husky install"
+}
+,
   "devDependencies": {
     "@dhis2/cli-app-scripts": "^12.3.0",
     "@types/react-router-dom": "^5.3.3",

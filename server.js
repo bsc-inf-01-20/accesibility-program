@@ -35,17 +35,13 @@ const directionsLimiter = rateLimit({
 app.use('/api/', apiLimiter);
 app.use('/api/directions', directionsLimiter);
 
-// ======================
 // Constants
-// ======================
 const MAX_RADIUS = 50000; // 50km
 const DEFAULT_RADIUS = 5000;
 const API_TIMEOUT = 20000; // 20 seconds
 const ipv4Agent = new https.Agent({ family: 4 }); // Force IPv4
 
-// ======================
-// Helper Functions  
-// ======================
+// Helper Functions
 const validateCoordinates = (lat, lng) => {
   return lat && lng && !isNaN(lat) && !isNaN(lng) &&
          lat >= -90 && lat <= 90 &&
@@ -65,9 +61,7 @@ const validateDirectionsResponse = (data) => {
   }
 };
 
-// ======================
 // API Routes
-// ======================
 
 // Unified Places Search
 app.get('/api/places/search', async (req, res) => {
