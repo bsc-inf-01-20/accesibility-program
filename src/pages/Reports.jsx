@@ -4,7 +4,7 @@ const Reports = () => {
   return (
     <div className="page-container">
       <h1>Reports</h1>
-      <p>Analytics dashboard will go here.</p>
+      <p>.</p>
     </div>
   );
 };

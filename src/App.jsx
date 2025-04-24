@@ -21,7 +21,9 @@ const App = () => {
     };
 
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
   }, [isMobile]);
 
   const sidebarWidth = collapsed ? '60px' : '240px';

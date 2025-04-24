@@ -1,8 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { Button, ButtonStrip, NoticeBox, Modal, ModalTitle, ModalContent, ModalActions } from '@dhis2/ui';
+import React, { useState } from 'react';
+import { 
+  Button, 
+  ButtonStrip, 
+  NoticeBox, 
+  Modal, 
+  ModalTitle, 
+  ModalContent, 
+  ModalActions,
+  Tooltip,
+  CircularLoader,
+  IconCross16
+} from '@dhis2/ui';
+import { IconQuestion16 as Help } from '@dhis2/ui-icons';
 import { useFetchSchools } from '../Hooks/useFetchSchools';
 import { useGooglePlacesApi } from '../Hooks/useGooglePlacesApi';
 import { useGoogleRouting } from '../Hooks/useGoogleRouting';
+import { useSaveResults } from '../Hooks/useSaveResults';
+import { generateCSV } from '../utils/exportUtils';
 import { AMENITY_TYPES } from '../utils/constants';
 import { AmenitySelector } from '../components/AmenitySelector/AmenitySelector';
 import { ProgressTracker } from '../components/ProgressTracker/ProgressTracker';
@@ -37,6 +51,9 @@ export const ClosestPlaceFinder = () => {
     progress: routingProgress
   } = useGoogleRouting();
 
+  // Save results hook
+  const { save, saving, error: saveError } = useSaveResults();
+
   // State management
   const [places, setPlaces] = useState([]);
   const [allResults, setAllResults] = useState([]);
@@ -48,7 +65,16 @@ export const ClosestPlaceFinder = () => {
   const [invalidSchools, setInvalidSchools] = useState([]);
   const [noResultsSchools, setNoResultsSchools] = useState([]);
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
+  const [overpassLoading, setOverpassLoading] = useState(false);
   
+  // Notification states
+  const [saveSuccess, setSaveSuccess] = useState(null);
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+  const [showError, setShowError] = useState(true);
+  const [showInvalidSchools, setShowInvalidSchools] = useState(true);
+  const [showNoResults, setShowNoResults] = useState(true);
+  const [showCompletion, setShowCompletion] = useState(true);
+
   // Batch processing config
   const BATCH_SIZE = 3;
   
@@ -60,7 +86,7 @@ export const ClosestPlaceFinder = () => {
   });
 
   // Combine errors from all sources
-  const error = schoolsError || placesError || routingError;
+  const combinedError = schoolsError || placesError || routingError;
 
   const processSchoolBatch = async (school, amenityType) => {
     try {
@@ -99,7 +125,12 @@ export const ClosestPlaceFinder = () => {
         location: closest.location,
         schoolLocation: closest.schoolLocation,
         bounds: closest.bounds,
-        batchId: currentBatchIndex
+        batchId: currentBatchIndex,
+        rawData: {
+          orgUnit: school.id,
+          schoolCoords: school.geometry.coordinates,
+          placeCoords: closest.location ? [closest.location.lng, closest.location.lat] : null
+        }
       };
 
     } catch (err) {
@@ -124,6 +155,7 @@ export const ClosestPlaceFinder = () => {
 
     const invalid = filteredSchools.filter(school => !validSchools.includes(school));
     setInvalidSchools(invalid);
+    setShowInvalidSchools(true);
 
     // Reset state
     setActionTriggered(true);
@@ -138,6 +170,7 @@ export const ClosestPlaceFinder = () => {
       total: validSchools.length,
       isComplete: false
     });
+    setShowCompletion(false);
 
     try {
       // Process in batches
@@ -166,13 +199,50 @@ export const ClosestPlaceFinder = () => {
       }
     } catch (err) {
       console.error('Batch processing error:', err);
-      setError(`Processing failed: ${err.message}`);
     }
+  };
+
+  const handleSave = async () => {
+    setSaveSuccess(null);
+    setShowSaveSuccess(false);
+    const saveResult = await save(allResults, selectedAmenity);
+    if (saveResult.success) {
+      setSaveSuccess({
+        count: saveResult.savedCount,
+        time: new Date().toLocaleTimeString()
+      });
+      setShowSaveSuccess(true);
+    }
+  };
+
+  const handleExportCSV = () => {
+    if (!allResults.length) return;
+    
+    const csvContent = generateCSV(allResults, selectedAmenity);
+    const filename = `school_proximity_${selectedAmenity.value}_${new Date().toISOString().slice(0,10)}.csv`;
+    
+    // Create and trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
     <div className="closest-place-finder">
-      <h1 className="app-header">School Proximity Analyzer</h1>
+      <h1 className="app-header">
+        School Proximity Analyzer
+        <Tooltip content="Find closest amenities to schools">
+          <Help className="header-help" />
+        </Tooltip>
+      </h1>
       
       <div className="control-panel">
         {/* School and amenity selection */}
@@ -201,14 +271,16 @@ export const ClosestPlaceFinder = () => {
 
         {/* Action buttons */}
         <div className="action-section">
-          <ButtonStrip>
+          <ButtonStrip className="action-buttons">
             <Button 
               onClick={handleFetchData}
               disabled={placesLoading || schoolsLoading || !filteredSchools.length}
               primary
+              icon={overpassLoading ? <CircularLoader small /> : null}
             >
               {placesLoading ? 'Processing...' : 'Find Closest Amenities'}
             </Button>
+            
             <Button
               onClick={() => setShowRouteSelector(true)}
               disabled={!progress.isComplete || !allResults.length}
@@ -216,23 +288,105 @@ export const ClosestPlaceFinder = () => {
             >
               View Routes
             </Button>
+
+            <Button
+              onClick={handleSave}
+              disabled={!progress.isComplete || saving || allResults.length === 0}
+              secondary
+              icon={saving ? <CircularLoader small /> : null}
+            >
+              {saving ? 'Saving...' : 'Save Results'}
+            </Button>
+
+            <Button
+              onClick={handleExportCSV}
+              disabled={!progress.isComplete || allResults.length === 0}
+              secondary
+            >
+              Export to CSV
+            </Button>
           </ButtonStrip>
 
           {/* Notifications */}
           <div className="notice-container">
-            {error && <NoticeBox error title="Error">{error}</NoticeBox>}
-            {invalidSchools.length > 0 && (
-              <NoticeBox warning title="Notice">
+            {showSaveSuccess && saveSuccess && (
+              <NoticeBox 
+                success 
+                title="Save Successful" 
+                onHidden={() => setShowSaveSuccess(false)}
+                actions={[{
+                  label: 'Dismiss',
+                  onClick: () => setShowSaveSuccess(false),
+                  icon: <IconCross16 />
+                }]}
+              >
+                Saved {saveSuccess.count} {selectedAmenity.label} results at {saveSuccess.time}
+              </NoticeBox>
+            )}
+
+            {showError && (combinedError || saveError) && (
+              <NoticeBox 
+                error 
+                title="Error" 
+                onHidden={() => setShowError(false)}
+                actions={[{
+                  label: 'Dismiss',
+                  onClick: () => setShowError(false),
+                  icon: <IconCross16 />
+                }]}
+              >
+                <div className="error-message">
+                  {combinedError?.message || saveError}
+                  {combinedError?.details && (
+                    <pre className="error-details">
+                      {JSON.stringify(combinedError.details, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              </NoticeBox>
+            )}
+
+            {showInvalidSchools && invalidSchools.length > 0 && (
+              <NoticeBox 
+                warning 
+                title="Notice"
+                onHidden={() => setShowInvalidSchools(false)}
+                actions={[{
+                  label: 'Dismiss',
+                  onClick: () => setShowInvalidSchools(false),
+                  icon: <IconCross16 />
+                }]}
+              >
                 {invalidSchools.length} schools skipped due to invalid coordinates
               </NoticeBox>
             )}
-            {noResultsSchools.length > 0 && (
-              <NoticeBox warning title="Notice">
+
+            {showNoResults && noResultsSchools.length > 0 && (
+              <NoticeBox 
+                warning 
+                title="Notice"
+                onHidden={() => setShowNoResults(false)}
+                actions={[{
+                  label: 'Dismiss',
+                  onClick: () => setShowNoResults(false),
+                  icon: <IconCross16 />
+                }]}
+              >
                 No {selectedAmenity.label} found near: {noResultsSchools.join(', ')}
               </NoticeBox>
             )}
-            {progress.isComplete && (
-              <NoticeBox success title="Complete">
+
+            {showCompletion && progress.isComplete && (
+              <NoticeBox 
+                success 
+                title="Complete"
+                onHidden={() => setShowCompletion(false)}
+                actions={[{
+                  label: 'Dismiss',
+                  onClick: () => setShowCompletion(false),
+                  icon: <IconCross16 />
+                }]}
+              >
                 Processed {progress.processed} schools, found {allResults.length} results for {selectedAmenity.label}
               </NoticeBox>
             )}
