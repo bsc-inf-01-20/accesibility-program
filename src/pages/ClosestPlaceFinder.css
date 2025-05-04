@@ -183,3 +183,74 @@
 .leaflet-popup-container {
   animation: popupFadeIn 0.2s ease-out forwards;
 }
+/* Style the loading container */
+.loading-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Style the CircularLoader specifically */
+.loading-icon {
+  background-color: white;
+  border-radius: 50%;
+  padding: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 103, 197, 0.3);
+}
+
+/* Adjust the loader colors */
+.loading-icon .dhis2-uicore-circularloader-small {
+  border-color: #0067c5 transparent transparent !important;
+}
+/* Notice Container Styles */
+.notice-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+/* Ensure NoticeBox has relative positioning */
+.dhis2-uicore-noticebox-content {
+  position: relative;
+  padding-right: 32px; /* Make space for close button */
+}
+
+/* Style the close button */
+.dhis2-uicore-noticebox-closebutton {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 20px;
+  height: 20px;
+  padding: 2px;
+  border-radius: 50%;
+  background: transparent;
+  transition: background-color 0.2s;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.dhis2-uicore-noticebox-closebutton:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* Style the close icon */
+.dhis2-uicore-noticebox-closebutton svg {
+  width: 16px;
+  height: 16px;
+  color: inherit;
+}
+
+/* Different icon colors for different notice types */
+.dhis2-uicore-noticebox-error .dhis2-uicore-noticebox-closebutton svg {
+  color: #d32f2f;
+}
+
+.dhis2-uicore-noticebox-warning .dhis2-uicore-noticebox-closebutton svg {
+  color: #ed6c02;
+}
+
+.dhis2-uicore-noticebox-success .dhis2-uicore-noticebox-closebutton svg {
+  color: #2e7d32;
+}

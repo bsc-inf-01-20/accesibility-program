@@ -36,6 +36,11 @@ export const useGoogleRouting = () => {
       console.warn(`No valid places found for ${school.displayName}`);
       return null;
     }
+
+    console.log('[Routing] School coordinates verified:', {
+      coordinates: school.geometry.coordinates,
+      formatted: { lat: schoolLat, lng: schoolLng }
+    });
   
     setProgress({ current: 0, total: validPlaces.length, percentage: 0 });
   
@@ -61,7 +66,6 @@ export const useGoogleRouting = () => {
                 percentage: Math.floor(((prev.current + 1) / validPlaces.length) * 100)
               }));
   
-              // Enhanced response validation
               if (!response.data || 
                   response.data.status !== 'OK' || 
                   !response.data.routes?.[0]?.legs?.[0] ||
@@ -78,32 +82,44 @@ export const useGoogleRouting = () => {
               const leg = route.legs[0];
 
               const result = {
+                // School information
                 school: school.displayName,
                 schoolId: school.id,
+                schoolCoords: school.geometry.coordinates, // [lng, lat] array
+                schoolLocation: { lat: schoolLat, lng: schoolLng }, // {lat, lng} object
+                schoolGeometry: school.geometry, // Original geometry object
+                
+                // Place information
                 place: place.name,
                 placeId: place.id,
+                location: place.location,
                 amenityType: amenityType?.label || amenityType,
+                
+                // Route information
                 distance: (leg.distance?.value || 0) / 1000,
                 duration: leg.duration?.value || 0,
                 time: formatDuration(leg.duration?.value || 0),
-                location: place.location,
                 overviewPolyline: route.overview_polyline.points,
                 steps: leg.steps.map(step => ({
                   instructions: step.html_instructions?.replace(/<[^>]*>?/gm, '') || 'Continue',
                   distance: step.distance?.text || '0 m',
                   duration: step.duration?.text || '0 mins'
                 })),
-                travelMode, // Explicitly included
-                requestedTravelMode: travelMode, // For debugging
+                
+                // Travel mode information
+                travelMode,
+                requestedTravelMode: travelMode,
                 isDriving: travelMode === 'driving',
                 bounds: route.bounds,
-                responseSource: 'google' // For tracking
+                responseSource: 'google'
               };
 
               console.log('[Routing] Generated result:', {
-                summary: `${result.school} to ${result.place}`,
-                mode: result.travelMode,
-                distance: result.distance
+                school: result.school,
+                place: result.place,
+                schoolLocation: result.schoolLocation,
+                placeLocation: result.location,
+                travelMode: result.travelMode
               });
 
               return result;
@@ -128,26 +144,24 @@ export const useGoogleRouting = () => {
         return null;
       }
 
-      console.log('[Routing] Valid results before reduction:', validResults.map(r => ({
+      console.log('[Routing] Valid results:', validResults.map(r => ({
+        school: r.school,
         place: r.place,
-        mode: r.travelMode,
-        distance: r.distance
+        schoolLocation: r.schoolLocation,
+        placeLocation: r.location,
+        travelMode: r.travelMode
       })));
   
       const closest = validResults.reduce((min, current) => {
-        const isCloser = current.distance < min.distance;
-        console.log('[Routing] Comparing:', {
-          current: { place: current.place, mode: current.travelMode, distance: current.distance },
-          min: { place: min.place, mode: min.travelMode, distance: min.distance },
-          isCloser
-        });
-        return isCloser ? current : min;
+        return current.distance < min.distance ? current : min;
       });
 
-      console.log('[Routing] Selected closest:', {
+      console.log('[Routing] Selected closest route:', {
+        school: closest.school,
         place: closest.place,
-        mode: closest.travelMode,
-        distance: closest.distance
+        distance: closest.distance,
+        schoolLocation: closest.schoolLocation,
+        placeLocation: closest.location
       });
 
       return closest;
@@ -187,10 +201,6 @@ export const useGoogleRouting = () => {
 
           const closest = await findClosestPlace(school, schoolPlaces, amenityType, travelMode);
           if (closest) {
-            console.log(`[Batch] Added result for ${school.displayName}`, {
-              place: closest.place,
-              mode: closest.travelMode
-            });
             results.push(closest);
           }
 
@@ -211,7 +221,8 @@ export const useGoogleRouting = () => {
       console.log('[Batch] Final results:', results.map(r => ({
         school: r.school,
         place: r.place,
-        mode: r.travelMode
+        schoolLocation: r.schoolLocation,
+        placeLocation: r.location
       })));
 
       return results;
