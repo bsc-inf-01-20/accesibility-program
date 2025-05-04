@@ -1,0 +1,132 @@
+/* Main container */
+.semis-container {
+    padding: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  
+  .semis-header {
+    color: #2c6693;
+    margin-bottom: 25px;
+    text-align: center;
+  }
+  
+  /* School selection section */
+  .school-selection-section {
+    margin-bottom: 30px;
+    background: #f5f9fc;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .section-title {
+    color: #2c6693;
+    margin-bottom: 15px;
+  }
+  
+  .school-selection-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .school-search-box {
+    width: 100%;
+  }
+  
+  .search-input {
+    width: 100%;
+  }
+  
+  .school-dropdown-wrapper {
+    width: 100%;
+  }
+  
+  .school-dropdown {
+    width: 100%;
+  }
+  
+  /* Registration content layout */
+  .registration-content {
+    display: flex;
+    gap: 30px;
+    margin-top: 20px;
+  }
+  
+  @media (max-width: 1024px) {
+    .registration-content {
+      flex-direction: column;
+    }
+  }
+  
+  /* Form section */
+  .registration-form-section {
+    flex: 1;
+    min-width: 350px;
+  }
+  
+  .registration-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    background: #f5f9fc;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  .form-input {
+    width: 100%;
+  }
+  
+  .location-search-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+  
+  .location-search-input {
+    flex: 1;
+  }
+  
+  .location-search-button {
+    height: 42px;
+    white-space: nowrap;
+  }
+  
+  .form-actions {
+    margin-top: 15px;
+  }
+  
+  .submit-button {
+    width: 100%;
+  }
+  
+  /* Map section */
+  .map-visualization {
+    flex: 2;
+    min-height: 500px;
+  }
+  
+  .map-container {
+    height: 100%;
+    width: 100%;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  /* Notices and errors */
+  .notice-box {
+    margin: 20px 0;
+  }
+  
+  .error-notice {
+    margin-top: 15px;
+  }

@@ -30,11 +30,12 @@ export const ClosestPlaceFinder = () => {
   const { 
     selectedLevels,
     allUnits,
-    selectedSchools: filteredSchools,
+    selectedSchools,
     loading: schoolsLoading,
     error: schoolsError,
     handleSelectLevel,
-    fetchOrgUnits
+    fetchOrgUnits,
+    setSelectedSchools
   } = useFetchSchools();
   
   // Data processing hooks
@@ -90,16 +91,16 @@ export const ClosestPlaceFinder = () => {
 
   const processSchoolBatch = async (school, amenityType) => {
     try {
-      // 1. Find nearby places
+      // Find nearby places
       const foundPlaces = await processSchool(school, amenityType);
       const validPlaces = foundPlaces?.filter(p => p?.location?.lat && p?.location?.lng) || [];
       
       if (validPlaces.length === 0) {
-        setNoResultsSchools(prev => [...prev, school.displayName]);
+        setNoResultsSchools(prev => [...prev, school.name]);
         return null;
       }
 
-      // 2. Find closest place
+      // Find closest place
       const closest = await findClosestPlace(
         {
           ...school,
@@ -114,7 +115,7 @@ export const ClosestPlaceFinder = () => {
       if (!closest) return null;
 
       return {
-        school: school.displayName,
+        school: school.name,
         schoolId: school.id,
         place: closest.place,
         distance: closest.distance,
@@ -134,26 +135,26 @@ export const ClosestPlaceFinder = () => {
       };
 
     } catch (err) {
-      console.error(`Error processing ${school.displayName}:`, err);
+      console.error(`Error processing ${school.name}:`, err);
       return null;
     }
   };
 
   const handleFetchData = async () => {
     const isLoading = schoolsLoading || placesLoading || routingLoading;
-    if (isLoading || filteredSchools.length === 0) return;
+    if (isLoading || selectedSchools.length === 0) return;
 
     // Filter schools with valid coordinates
-    const validSchools = filteredSchools.filter(school => {
+    const validSchools = selectedSchools.filter(school => {
       const coords = school?.geometry?.coordinates;
       const hasValidCoords = coords?.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1]);
       if (!hasValidCoords) {
-        console.warn(`Invalid coordinates for ${school.displayName}:`, coords);
+        console.warn(`Invalid coordinates for ${school.name}:`, coords);
       }
       return hasValidCoords;
     });
 
-    const invalid = filteredSchools.filter(school => !validSchools.includes(school));
+    const invalid = selectedSchools.filter(school => !validSchools.includes(school));
     setInvalidSchools(invalid);
     setShowInvalidSchools(true);
 
@@ -205,7 +206,7 @@ export const ClosestPlaceFinder = () => {
   const handleSave = async () => {
     setSaveSuccess(null);
     setShowSaveSuccess(false);
-    const saveResult = await save(allResults, selectedAmenity);
+    const saveResult = await save(selectedSchools, allResults, selectedAmenity);
     if (saveResult.success) {
       setSaveSuccess({
         count: saveResult.savedCount,
@@ -245,7 +246,7 @@ export const ClosestPlaceFinder = () => {
       </h1>
       
       <div className="control-panel">
-        {/* School and amenity selection */}
+        {/* Organization unit and amenity selection */}
         <div className="selection-section">
           <SchoolSelector 
             selectedLevels={selectedLevels}
@@ -254,11 +255,12 @@ export const ClosestPlaceFinder = () => {
             error={schoolsError}
             handleSelectLevel={handleSelectLevel}
             fetchOrgUnits={fetchOrgUnits}
+            setSelectedSchools={setSelectedSchools}
           />
           
-          {filteredSchools.length > 0 && (
+          {selectedSchools.length > 0 && (
             <div className="selection-count">
-              {filteredSchools.length} schools selected
+              {selectedSchools.length} schools selected
             </div>
           )}
           
@@ -274,7 +276,7 @@ export const ClosestPlaceFinder = () => {
           <ButtonStrip className="action-buttons">
             <Button 
               onClick={handleFetchData}
-              disabled={placesLoading || schoolsLoading || !filteredSchools.length}
+              disabled={!selectedSchools.length || placesLoading || schoolsLoading}
               primary
               icon={overpassLoading ? <CircularLoader small /> : null}
             >
@@ -402,7 +404,7 @@ export const ClosestPlaceFinder = () => {
                 <div>Processed: {progress.processed}/{progress.total}</div>
                 <div className="batch-progress">
                   Batch {Math.floor(currentBatchIndex/BATCH_SIZE) + 1}/
-                  {Math.ceil(filteredSchools.length/BATCH_SIZE)}
+                  {Math.ceil(selectedSchools.length/BATCH_SIZE)}
                 </div>
               </div>
             </div>

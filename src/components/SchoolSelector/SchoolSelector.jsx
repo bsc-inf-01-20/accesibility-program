@@ -7,18 +7,17 @@ export function SchoolSelector({
   loading,
   error,
   handleSelectLevel,
-  fetchOrgUnits
+  fetchOrgUnits,
+  setSelectedSchools
 }) {
   const [expandedItems, setExpandedItems] = useState({});
   const [isOpen, setIsOpen] = useState(false);
 
-  // Toggle dropdown visibility
   const toggleDropdown = (e) => {
     e.stopPropagation();
     setIsOpen(prev => !prev);
   };
 
-  // Safe hierarchy building
   const hierarchy = useMemo(() => {
     const getChildren = (parentId, level) => 
       (allUnits || []).filter(u => 
@@ -43,12 +42,10 @@ export function SchoolSelector({
     }
   }, [allUnits, selectedLevels]);
 
-  // Auto-expand logic
   useEffect(() => {
     const newExpanded = {...expandedItems};
     let changed = false;
 
-    // Auto-expand parents when children exist
     const levelsToCheck = [
       { level: 2, childLevel: 3 },
       { level: 3, childLevel: 4 },
@@ -74,20 +71,18 @@ export function SchoolSelector({
   const handleSelect = (level, id, e) => {
     e.stopPropagation();
     
-    // Handle school selection (level 5)
     if (level === 5) {
+      setSelectedSchools([{
+        id,
+        name: allUnits.find(u => u.id === id)?.displayName,
+        geometry: allUnits.find(u => u.id === id)?.geometry
+      }]);
       setIsOpen(false);
-      return handleSelectLevel(level, id);
+    } else {
+      setExpandedItems(prev => ({ ...prev, [id]: !prev[id] }));
     }
 
-    // Toggle expansion for non-school levels
-    const shouldExpand = !expandedItems[id];
-    setExpandedItems(prev => ({ ...prev, [id]: shouldExpand }));
-
-    // Fetch next level if needed
-    if (shouldExpand && level < 5) {
-      handleSelectLevel(level, id);
-    }
+    handleSelectLevel(level, id);
   };
 
   const getSelectedText = () => {

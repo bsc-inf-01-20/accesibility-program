@@ -34,6 +34,7 @@ export const useFetchSchools = () => {
   const [allUnits, setAllUnits] = useState([]);
   const [selectedLevels, setSelectedLevels] = useState({});
   const [filteredSchools, setFilteredSchools] = useState([]);
+  const [selectedSchools, setSelectedSchools] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const MINISTRY_ID = "U7ahfMlCl7k";
@@ -63,7 +64,14 @@ export const useFetchSchools = () => {
   } = useDataQuery(SCHOOLS_QUERY, {
     lazy: true,
     onComplete: (data) => {
-      setFilteredSchools(data?.schools?.organisationUnits || []);
+      const schools = data?.schools?.organisationUnits || [];
+      setFilteredSchools(schools);
+      // Auto-select all schools when they load
+      setSelectedSchools(schools.map(school => ({
+        id: school.id,
+        name: school.displayName,
+        geometry: school.geometry
+      })));
     },
     onError: (error) => {
       setError(error.message || "Failed to load schools");
@@ -89,11 +97,7 @@ export const useFetchSchools = () => {
 
       setLoading(true);
       try {
-        const result = await fetchSchools({ parentId: rootId });
-        if (result?.schools?.organisationUnits) {
-          setFilteredSchools(result.schools.organisationUnits);
-          console.log(`Loaded ${result.schools.organisationUnits.length} schools for level ${deepestLevel}`);
-        }
+        await fetchSchools({ parentId: rootId });
       } catch (err) {
         console.error("Error loading schools:", err);
         setError(err.message || "Failed to load schools");
@@ -139,10 +143,12 @@ export const useFetchSchools = () => {
   return {
     selectedLevels,
     allUnits,
-    selectedSchools: filteredSchools,
+    selectedSchools,
+    filteredSchools,
     loading: loading || orgUnitsLoading || schoolsLoading,
     error: error || orgUnitsError || schoolsError,
     handleSelectLevel,
-    fetchOrgUnits
+    fetchOrgUnits,
+    setSelectedSchools
   };
 };
