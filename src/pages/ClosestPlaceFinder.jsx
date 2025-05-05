@@ -1,253 +1,238 @@
-import React, { useState } from 'react';
-import { 
-  Button, 
-  ButtonStrip, 
-  NoticeBox, 
-  Modal, 
-  ModalTitle, 
-  ModalContent, 
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Button,
+  ButtonStrip,
+  NoticeBox,
+  Modal,
+  ModalTitle,
+  ModalContent,
   ModalActions,
-  Tooltip,
-  CircularLoader,
-  IconCross16
-} from '@dhis2/ui';
-import { IconQuestion16 as Help } from '@dhis2/ui-icons';
-import { useFetchSchools } from '../Hooks/useFetchSchools';
-import { useGooglePlacesApi } from '../Hooks/useGooglePlacesApi';
-import { useGoogleRouting } from '../Hooks/useGoogleRouting';
-import { useSaveResults } from '../Hooks/useSaveResults';
-import { generateCSV } from '../utils/exportUtils';
-import { AMENITY_TYPES } from '../utils/constants';
-import { AmenitySelector } from '../components/AmenitySelector/AmenitySelector';
-import { ProgressTracker } from '../components/ProgressTracker/ProgressTracker';
-import { ResultsTable } from '../components/ResultsTable/ResultsTable';
-import { SchoolSelector } from '../components/SchoolSelector/SchoolSelector';
-import { LeafletMapViewer } from '../components/MapViewer/LeafletMapViewer';
-import './ClosestPlaceFinder.css';
+} from "@dhis2/ui";
+import { useFetchSchools } from "../Hooks/useFetchSchools";
+import { useGooglePlacesApi } from "../Hooks/useGooglePlacesApi";
+import { useGoogleRouting } from "../Hooks/useGoogleRouting";
+import { AMENITY_TYPES } from "../utils/constants";
+import { AmenitySelector } from "../components/AmenitySelector/AmenitySelector";
+import { ProgressTracker } from "../components/ProgressTracker/ProgressTracker";
+import { ResultsTable } from "../components/ResultsTable/ResultsTable";
+import { SchoolSelector } from "../components/SchoolSelector/SchoolSelector";
+import { LeafletMapViewer } from "../components/MapViewer/LeafletMapViewer";
+import "./ClosestPlaceFinder.css";
+import { TravelModeSelector } from "../components/TravelModeSelector/TravelModeSelector";
+import { CircularLoader } from "@dhis2/ui";
+
+const BATCH_SIZE = 5; // Process 5 schools at a time
 
 export const ClosestPlaceFinder = () => {
-  // School selection hooks
-  const { 
+  // School selection
+  const {
     selectedLevels,
     allUnits,
     selectedSchools: filteredSchools,
     loading: schoolsLoading,
     error: schoolsError,
     handleSelectLevel,
-    fetchOrgUnits
+    fetchOrgUnits,
   } = useFetchSchools();
-  
-  // Data processing hooks
-  const { 
-    processSchool, 
-    loading: placesLoading, 
-    error: placesError 
+
+  // Data processing
+  const {
+    processSchool,
+    loading: placesLoading,
+    error: placesError,
   } = useGooglePlacesApi();
-  
-  const { 
+
+  const {
     findClosestPlace,
     loading: routingLoading,
     error: routingError,
-    progress: routingProgress
   } = useGoogleRouting();
 
   // Save results hook
   const { save, saving, error: saveError } = useSaveResults();
 
-  // State management
-  const [places, setPlaces] = useState([]);
+  // State
   const [allResults, setAllResults] = useState([]);
   const [batchResults, setBatchResults] = useState([]);
   const [selectedResult, setSelectedResult] = useState(null);
   const [showRouteSelector, setShowRouteSelector] = useState(false);
   const [selectedAmenity, setSelectedAmenity] = useState(AMENITY_TYPES.MARKET);
-  const [actionTriggered, setActionTriggered] = useState(false);
   const [invalidSchools, setInvalidSchools] = useState([]);
   const [noResultsSchools, setNoResultsSchools] = useState([]);
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
-  const [overpassLoading, setOverpassLoading] = useState(false);
-  
-  // Notification states
-  const [saveSuccess, setSaveSuccess] = useState(null);
-  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
-  const [showError, setShowError] = useState(true);
-  const [showInvalidSchools, setShowInvalidSchools] = useState(true);
-  const [showNoResults, setShowNoResults] = useState(true);
-  const [showCompletion, setShowCompletion] = useState(true);
-
-  // Batch processing config
-  const BATCH_SIZE = 3;
-  
-  // Progress tracking
-  const [progress, setProgress] = useState({ 
-    processed: 0, 
-    total: 0,
-    isComplete: false 
+  const [selectedTravelMode, setSelectedTravelMode] = useState("walking");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [cancellationMessage, setCancellationMessage] = useState(null);
+  const cancelRequested = useRef(false);
+  const [visibleNotices, setVisibleNotices] = useState({
+    schoolsError: true,
+    placesError: true,
+    routingError: true,
+    invalidSchools: true,
+    noResultsSchools: true,
+    cancellationMessage: true,
+    completionMessage: true,
   });
 
-  // Combine errors from all sources
-  const combinedError = schoolsError || placesError || routingError;
+  const clearNotice = (noticeType) => {
+    setVisibleNotices((prev) => ({
+      ...prev,
+      [noticeType]: false,
+    }));
+
+    if (noticeType === "invalidSchools") {
+      setInvalidSchools([]);
+    } else if (noticeType === "noResultsSchools") {
+      setNoResultsSchools([]);
+    }
+  };
+
+  // Progress tracking
+  const [progress, setProgress] = useState({
+    processed: 0,
+    total: 0,
+    isComplete: false,
+  });
+
+  // Button state logic
+  const isButtonDisabled = schoolsLoading && !isProcessing;
+
+  const checkCancelled = () => {
+    if (cancelRequested.current) {
+      throw new Error("Processing cancelled");
+    }
+  };
 
   const processSchoolBatch = async (school, amenityType) => {
+    checkCancelled();
+
     try {
-      // 1. Find nearby places
       const foundPlaces = await processSchool(school, amenityType);
-      const validPlaces = foundPlaces?.filter(p => p?.location?.lat && p?.location?.lng) || [];
-      
+      checkCancelled();
+
+      const validPlaces =
+        foundPlaces?.filter((p) => p?.location?.lat && p?.location?.lng) || [];
+
       if (validPlaces.length === 0) {
-        setNoResultsSchools(prev => [...prev, school.displayName]);
+        setNoResultsSchools((prev) => [...prev, school.displayName]);
         return null;
       }
 
-      // 2. Find closest place
       const closest = await findClosestPlace(
-        {
-          ...school,
-          geometry: {
-            coordinates: school.geometry.coordinates
-          }
-        },
+        school,
         validPlaces,
-        amenityType
+        amenityType,
+        selectedTravelMode
       );
+      checkCancelled();
 
-      if (!closest) return null;
-
-      return {
-        school: school.displayName,
-        schoolId: school.id,
-        place: closest.place,
-        distance: closest.distance,
-        duration: closest.duration,
-        time: closest.time,
-        overviewPolyline: closest.overviewPolyline,
-        steps: closest.steps,
-        location: closest.location,
-        schoolLocation: closest.schoolLocation,
-        bounds: closest.bounds,
-        batchId: currentBatchIndex,
-        rawData: {
-          orgUnit: school.id,
-          schoolCoords: school.geometry.coordinates,
-          placeCoords: closest.location ? [closest.location.lng, closest.location.lat] : null
-        }
-      };
-
+      return closest
+        ? {
+            ...closest,
+            school: school.displayName,
+            schoolId: school.id,
+            batchId: currentBatchIndex,
+          }
+        : null;
     } catch (err) {
-      console.error(`Error processing ${school.displayName}:`, err);
+      if (err.message !== "Processing cancelled") {
+        console.error(`Error processing ${school.displayName}:`, err);
+      }
       return null;
     }
   };
 
   const handleFetchData = async () => {
-    const isLoading = schoolsLoading || placesLoading || routingLoading;
-    if (isLoading || filteredSchools.length === 0) return;
+    // Cancel if already processing
+    if (isProcessing) {
+      cancelRequested.current = true;
+      setIsProcessing(false);
+      setCancellationMessage("Processing cancelled by user");
+      return;
+    }
 
-    // Filter schools with valid coordinates
-    const validSchools = filteredSchools.filter(school => {
+    if (isButtonDisabled) return;
+
+    // Reset states
+    cancelRequested.current = false;
+    setIsProcessing(true);
+    setCancellationMessage(null);
+    setNoResultsSchools([]);
+    setInvalidSchools([]);
+
+    // Filter valid schools
+    const validSchools = filteredSchools.filter((school) => {
       const coords = school?.geometry?.coordinates;
-      const hasValidCoords = coords?.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1]);
-      if (!hasValidCoords) {
-        console.warn(`Invalid coordinates for ${school.displayName}:`, coords);
-      }
-      return hasValidCoords;
+      const isValid =
+        coords?.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1]);
+      if (!isValid) setInvalidSchools((prev) => [...prev, school.displayName]);
+      return isValid;
     });
 
-    const invalid = filteredSchools.filter(school => !validSchools.includes(school));
-    setInvalidSchools(invalid);
-    setShowInvalidSchools(true);
-
-    // Reset state
-    setActionTriggered(true);
-    setPlaces([]);
     setAllResults([]);
     setBatchResults([]);
     setSelectedResult(null);
-    setNoResultsSchools([]);
     setCurrentBatchIndex(0);
-    setProgress({ 
-      processed: 0, 
+    setProgress({
+      processed: 0,
       total: validSchools.length,
-      isComplete: false
+      isComplete: false,
     });
     setShowCompletion(false);
 
     try {
-      // Process in batches
       for (let i = 0; i < validSchools.length; i += BATCH_SIZE) {
+        checkCancelled();
+
         const batch = validSchools.slice(i, i + BATCH_SIZE);
         setCurrentBatchIndex(i);
-        
-        const batchPromises = batch.map(school => 
-          processSchoolBatch(school, selectedAmenity)
-        );
 
-        const results = await Promise.all(batchPromises);
+        const results = await Promise.all(
+          batch.map((school) => processSchoolBatch(school, selectedAmenity))
+        );
+        checkCancelled();
+
         const validResults = results.filter(Boolean);
-        
-        setBatchResults(prev => [...prev, ...validResults]);
-        setPlaces(prev => [...prev, ...validResults]);
-        setAllResults(prev => [...prev, ...validResults]);
-        setProgress(prev => ({
+        setBatchResults((prev) => [...prev, ...validResults]);
+        setAllResults((prev) => [...prev, ...validResults]);
+        setProgress((prev) => ({
           ...prev,
           processed: i + batch.length,
-          isComplete: i + batch.length >= validSchools.length
+          isComplete: i + batch.length >= validSchools.length,
         }));
-        
-        // Small delay between batches for better UX
-        await new Promise(resolve => setTimeout(resolve, 300));
+
+        await new Promise((resolve) => {
+          const timeout = setTimeout(resolve, 300);
+          if (cancelRequested.current) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
       }
     } catch (err) {
-      console.error('Batch processing error:', err);
+      if (err.message !== "Processing cancelled") {
+        console.error("Batch processing error:", err);
+      }
+    } finally {
+      setIsProcessing(false);
+      cancelRequested.current = false;
     }
   };
 
-  const handleSave = async () => {
-    setSaveSuccess(null);
-    setShowSaveSuccess(false);
-    const saveResult = await save(allResults, selectedAmenity);
-    if (saveResult.success) {
-      setSaveSuccess({
-        count: saveResult.savedCount,
-        time: new Date().toLocaleTimeString()
-      });
-      setShowSaveSuccess(true);
-    }
-  };
-
-  const handleExportCSV = () => {
-    if (!allResults.length) return;
-    
-    const csvContent = generateCSV(allResults, selectedAmenity);
-    const filename = `school_proximity_${selectedAmenity.value}_${new Date().toISOString().slice(0,10)}.csv`;
-    
-    // Create and trigger download
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  useEffect(() => {
+    return () => {
+      cancelRequested.current = true;
+      setIsProcessing(false);
+    };
+  }, []);
 
   return (
     <div className="closest-place-finder">
-      <h1 className="app-header">
-        School Proximity Analyzer
-        <Tooltip content="Find closest amenities to schools">
-          <Help className="header-help" />
-        </Tooltip>
-      </h1>
-      
+      <h1 className="app-header">School Proximity Analyzer</h1>
+
       <div className="control-panel">
-        {/* School and amenity selection */}
         <div className="selection-section">
-          <SchoolSelector 
+          <SchoolSelector
             selectedLevels={selectedLevels}
             allUnits={allUnits}
             loading={schoolsLoading}
@@ -255,32 +240,44 @@ export const ClosestPlaceFinder = () => {
             handleSelectLevel={handleSelectLevel}
             fetchOrgUnits={fetchOrgUnits}
           />
-          
+
           {filteredSchools.length > 0 && (
             <div className="selection-count">
               {filteredSchools.length} schools selected
             </div>
           )}
-          
-          <AmenitySelector 
+
+          <AmenitySelector
             selectedType={selectedAmenity}
             onChange={setSelectedAmenity}
             options={Object.values(AMENITY_TYPES)}
           />
         </div>
 
-        {/* Action buttons */}
+        <TravelModeSelector
+          selectedMode={selectedTravelMode}
+          onChange={setSelectedTravelMode}
+        />
+
         <div className="action-section">
-          <ButtonStrip className="action-buttons">
-            <Button 
+          <ButtonStrip>
+            <Button
               onClick={handleFetchData}
-              disabled={placesLoading || schoolsLoading || !filteredSchools.length}
+              disabled={isButtonDisabled}
               primary
-              icon={overpassLoading ? <CircularLoader small /> : null}
             >
-              {placesLoading ? 'Processing...' : 'Find Closest Amenities'}
+              {isProcessing ? (
+                <span className="loading-content">
+                  <CircularLoader small className="loading-icon" />
+                  <span>Cancel Processing</span>
+                </span>
+              ) : schoolsLoading ? (
+                "Loading Schools..."
+              ) : (
+                "Find Closest Amenities"
+              )}
             </Button>
-            
+
             <Button
               onClick={() => setShowRouteSelector(true)}
               disabled={!progress.isComplete || !allResults.length}
@@ -307,126 +304,114 @@ export const ClosestPlaceFinder = () => {
             </Button>
           </ButtonStrip>
 
-          {/* Notifications */}
           <div className="notice-container">
-            {showSaveSuccess && saveSuccess && (
-              <NoticeBox 
-                success 
-                title="Save Successful" 
-                onHidden={() => setShowSaveSuccess(false)}
-                actions={[{
-                  label: 'Dismiss',
-                  onClick: () => setShowSaveSuccess(false),
-                  icon: <IconCross16 />
-                }]}
+            {schoolsError && visibleNotices.schoolsError && (
+              <NoticeBox
+                error
+                title="Error"
+                onClose={() => clearNotice("schoolsError")}
+                showCloseButton
               >
-                Saved {saveSuccess.count} {selectedAmenity.label} results at {saveSuccess.time}
+                {schoolsError}
               </NoticeBox>
             )}
-
-            {showError && (combinedError || saveError) && (
-              <NoticeBox 
-                error 
-                title="Error" 
-                onHidden={() => setShowError(false)}
-                actions={[{
-                  label: 'Dismiss',
-                  onClick: () => setShowError(false),
-                  icon: <IconCross16 />
-                }]}
+            {placesError && visibleNotices.placesError && (
+              <NoticeBox
+                error
+                title="Error"
+                onClose={() => clearNotice("placesError")}
+                showCloseButton
               >
-                <div className="error-message">
-                  {combinedError?.message || saveError}
-                  {combinedError?.details && (
-                    <pre className="error-details">
-                      {JSON.stringify(combinedError.details, null, 2)}
-                    </pre>
-                  )}
-                </div>
+                {placesError}
               </NoticeBox>
             )}
-
-            {showInvalidSchools && invalidSchools.length > 0 && (
-              <NoticeBox 
-                warning 
+            {routingError && visibleNotices.routingError && (
+              <NoticeBox
+                error
+                title="Error"
+                onClose={() => clearNotice("routingError")}
+                showCloseButton
+              >
+                {routingError}
+              </NoticeBox>
+            )}
+            {invalidSchools.length > 0 && visibleNotices.invalidSchools && (
+              <NoticeBox
+                warning
                 title="Notice"
-                onHidden={() => setShowInvalidSchools(false)}
-                actions={[{
-                  label: 'Dismiss',
-                  onClick: () => setShowInvalidSchools(false),
-                  icon: <IconCross16 />
-                }]}
+                onClose={() => clearNotice("invalidSchools")}
+                showCloseButton
               >
-                {invalidSchools.length} schools skipped due to invalid coordinates
+                {invalidSchools.length} schools skipped due to invalid
+                coordinates
               </NoticeBox>
             )}
-
-            {showNoResults && noResultsSchools.length > 0 && (
-              <NoticeBox 
-                warning 
+            {noResultsSchools.length > 0 && visibleNotices.noResultsSchools && (
+              <NoticeBox
+                warning
                 title="Notice"
-                onHidden={() => setShowNoResults(false)}
-                actions={[{
-                  label: 'Dismiss',
-                  onClick: () => setShowNoResults(false),
-                  icon: <IconCross16 />
-                }]}
+                onClose={() => clearNotice("noResultsSchools")}
+                showCloseButton
               >
-                No {selectedAmenity.label} found near: {noResultsSchools.join(', ')}
+                No {selectedAmenity.label} found near:{" "}
+                {noResultsSchools.join(", ")}
               </NoticeBox>
             )}
-
-            {showCompletion && progress.isComplete && (
-              <NoticeBox 
-                success 
+            {cancellationMessage && visibleNotices.cancellationMessage && (
+              <NoticeBox
+                warning
+                title="Notice"
+                onClose={() => clearNotice("cancellationMessage")}
+                showCloseButton
+              >
+                {cancellationMessage}
+              </NoticeBox>
+            )}
+            {progress.isComplete && visibleNotices.completionMessage && (
+              <NoticeBox
+                success
                 title="Complete"
-                onHidden={() => setShowCompletion(false)}
-                actions={[{
-                  label: 'Dismiss',
-                  onClick: () => setShowCompletion(false),
-                  icon: <IconCross16 />
-                }]}
+                onClose={() => clearNotice("completionMessage")}
+                showCloseButton
               >
-                Processed {progress.processed} schools, found {allResults.length} results for {selectedAmenity.label}
+                Processed {progress.processed} schools, found{" "}
+                {allResults.length} results
               </NoticeBox>
             )}
           </div>
         </div>
 
-        {/* Progress tracking */}
-        {(progress.total > 0) && (
-          <div className={`progress-section ${placesLoading ? 'is-processing' : ''}`}>
+        {progress.total > 0 && (
+          <div
+            className={`progress-section ${isProcessing ? "is-processing" : ""}`}
+          >
             <div className="progress-header">
-              <h3>{placesLoading ? 'Processing...' : 'Completed'}</h3>
+              <h3>{isProcessing ? "Processing..." : "Completed"}</h3>
               <div className="progress-metrics">
-                <div>Processed: {progress.processed}/{progress.total}</div>
+                <div>
+                  Processed: {progress.processed}/{progress.total}
+                </div>
                 <div className="batch-progress">
-                  Batch {Math.floor(currentBatchIndex/BATCH_SIZE) + 1}/
-                  {Math.ceil(filteredSchools.length/BATCH_SIZE)}
+                  Batch {Math.floor(currentBatchIndex / BATCH_SIZE) + 1}/
+                  {Math.ceil(filteredSchools.length / BATCH_SIZE)}
                 </div>
               </div>
             </div>
-            
-            <ProgressTracker 
-              processed={progress.processed} 
-              total={progress.total} 
+            <ProgressTracker
+              processed={progress.processed}
+              total={progress.total}
             />
           </div>
         )}
       </div>
 
-      {/* Route Selector Modal */}
       {showRouteSelector && allResults.length > 0 && (
-        <Modal
-          open
-          onClose={() => setShowRouteSelector(false)}
-          large
-        >
+        <Modal open onClose={() => setShowRouteSelector(false)} large>
           <ModalTitle>Select a Route to View</ModalTitle>
           <ModalContent>
             <div className="route-selector-container">
               {allResults.map((result, index) => (
-                <div 
+                <div
                   key={`${result.school}-${result.place}-${index}`}
                   className="route-option"
                   onClick={() => {
@@ -434,7 +419,8 @@ export const ClosestPlaceFinder = () => {
                     setShowRouteSelector(false);
                   }}
                 >
-                  <strong>{result.school}</strong> to <strong>{result.place}</strong>
+                  <strong>{result.school}</strong> to{" "}
+                  <strong>{result.place}</strong>
                   <div className="route-meta">
                     <span>Distance: {result.distance} km</span>
                     <span>Time: {result.time}</span>
@@ -449,22 +435,22 @@ export const ClosestPlaceFinder = () => {
         </Modal>
       )}
 
-      {/* Single Route Map Viewer with Leaflet */}
       {selectedResult && (
         <>
-          <div className={`map-overlay ${selectedResult ? 'active' : ''}`} 
-              onClick={() => setSelectedResult(null)} />
-          <LeafletMapViewer 
-            result={selectedResult} 
+          <div
+            className={`map-overlay ${selectedResult ? "active" : ""}`}
+            onClick={() => setSelectedResult(null)}
+          />
+          <LeafletMapViewer
+            result={selectedResult}
             onClose={() => setSelectedResult(null)}
           />
         </>
       )}
 
-      {/* Results Table - Showing incremental batches */}
-      <ResultsTable 
-        places={batchResults} 
-        loading={placesLoading}
+      <ResultsTable
+        places={batchResults}
+        loading={isProcessing}
         selectedAmenity={selectedAmenity}
       />
     </div>

@@ -21,153 +21,161 @@ export const useGoogleRouting = () => {
     percentage: 0
   });
 
-  const findClosestPlace = useCallback(async (school, places, amenityType) => {
+  const findClosestPlace = useCallback(async (school, places, amenityType, travelMode = 'walking') => {
+    console.log('[Routing] Starting search with mode:', travelMode, 'for school:', school.displayName);
+    
     if (!school?.geometry?.coordinates || school.geometry.coordinates.length !== 2) {
       console.warn(`Invalid school coordinates for ${school?.displayName || 'unknown school'}`);
       return null;
     }
-
+  
     const [schoolLng, schoolLat] = school.geometry.coordinates;
-
-    const validPlaces = places.filter(place => {
-      if (!place?.location?.lat || !place?.location?.lng) {
-        console.warn(`Skipping place with invalid coordinates: ${place?.name || 'unknown place'}`);
-        return false;
-      }
-      return true;
-    });
-
+    const validPlaces = places.filter(place => place?.location?.lat && place?.location?.lng);
+  
     if (validPlaces.length === 0) {
       console.warn(`No valid places found for ${school.displayName}`);
       return null;
     }
 
-    setProgress({
-      current: 0,
-      total: validPlaces.length,
-      percentage: 0
+    console.log('[Routing] School coordinates verified:', {
+      coordinates: school.geometry.coordinates,
+      formatted: { lat: schoolLat, lng: schoolLng }
     });
-
-    const limit = pLimit(3); // Limit concurrency to 3 requests at a time
-
+  
+    setProgress({ current: 0, total: validPlaces.length, percentage: 0 });
+  
+    const limit = pLimit(3);
     try {
       const results = await Promise.all(
         validPlaces.map((place, index) =>
           limit(async () => {
             try {
+              console.log(`[Routing] Requesting directions (${travelMode}) from ${school.displayName} to ${place.name}`);
               const response = await axios.get('http://localhost:5000/api/directions', {
                 params: {
                   origin: `${schoolLat},${schoolLng}`,
                   destination: `${place.location.lat},${place.location.lng}`,
-                  mode: 'walking'
+                  mode: travelMode
                 },
                 timeout: 20000
               });
-
-              setProgress(prev => {
-                const current = prev.current + 1;
-                return {
-                  ...prev,
-                  current,
-                  percentage: Math.floor((current / validPlaces.length) * 100)
-                };
-              });
-
-              if (response.data.status !== 'OK' || !response.data.routes?.[0]?.legs?.[0]) {
-                console.warn('Invalid route structure', { school: school.displayName, place: place.name });
+  
+              setProgress(prev => ({
+                ...prev,
+                current: prev.current + 1,
+                percentage: Math.floor(((prev.current + 1) / validPlaces.length) * 100)
+              }));
+  
+              if (!response.data || 
+                  response.data.status !== 'OK' || 
+                  !response.data.routes?.[0]?.legs?.[0] ||
+                  !response.data.routes[0].overview_polyline?.points) {
+                console.warn('Invalid route structure', {
+                  school: school.displayName,
+                  place: place.name,
+                  response: response.data
+                });
                 return null;
               }
-
+  
               const route = response.data.routes[0];
               const leg = route.legs[0];
 
-              if (!route.overview_polyline?.points) {
-                console.warn('Missing overview polyline', { school: school.displayName, place: place.name });
-                return null;
-              }
-
-              const steps = leg.steps.map(step => ({
-                instructions: step.html_instructions
-                  ? step.html_instructions.replace(/<[^>]*>?/gm, '')
-                  : 'Continue',
-                distance: step.distance?.text || '0 m',
-                duration: step.duration?.text || '0 mins',
-                startLocation: step.start_location,
-                endLocation: step.end_location
-              }));
-
-              return {
+              const result = {
+                // School information
                 school: school.displayName,
                 schoolId: school.id,
-                schoolLocation: { lat: schoolLat, lng: schoolLng },
+                schoolCoords: school.geometry.coordinates, // [lng, lat] array
+                schoolLocation: { lat: schoolLat, lng: schoolLng }, // {lat, lng} object
+                schoolGeometry: school.geometry, // Original geometry object
+                
+                // Place information
                 place: place.name,
                 placeId: place.id,
+                location: place.location,
                 amenityType: amenityType?.label || amenityType,
+                
+                // Route information
                 distance: (leg.distance?.value || 0) / 1000,
                 duration: leg.duration?.value || 0,
                 time: formatDuration(leg.duration?.value || 0),
-                location: place.location,
                 overviewPolyline: route.overview_polyline.points,
-                steps,
-                bounds: {
-                  northeast: {
-                    lat: route.bounds?.northeast?.lat || Math.max(schoolLat, place.location.lat) + 0.01,
-                    lng: route.bounds?.northeast?.lng || Math.max(schoolLng, place.location.lng) + 0.01
-                  },
-                  southwest: {
-                    lat: route.bounds?.southwest?.lat || Math.min(schoolLat, place.location.lat) - 0.01,
-                    lng: route.bounds?.southwest?.lng || Math.min(schoolLng, place.location.lng) - 0.01
-                  }
-                }
+                steps: leg.steps.map(step => ({
+                  instructions: step.html_instructions?.replace(/<[^>]*>?/gm, '') || 'Continue',
+                  distance: step.distance?.text || '0 m',
+                  duration: step.duration?.text || '0 mins'
+                })),
+                
+                // Travel mode information
+                travelMode,
+                requestedTravelMode: travelMode,
+                isDriving: travelMode === 'driving',
+                bounds: route.bounds,
+                responseSource: 'google'
               };
+
+              console.log('[Routing] Generated result:', {
+                school: result.school,
+                place: result.place,
+                schoolLocation: result.schoolLocation,
+                placeLocation: result.location,
+                travelMode: result.travelMode
+              });
+
+              return result;
             } catch (err) {
               console.error(`Failed to process ${place.name} for ${school.displayName}`, {
                 error: err.message,
                 coordinates: {
                   school: `${schoolLat},${schoolLng}`,
                   place: `${place.location.lat},${place.location.lng}`
-                }
+                },
+                travelMode
               });
               return null;
             }
           })
         )
       );
-
+  
       const validResults = results.filter(Boolean);
       if (validResults.length === 0) {
         console.warn(`No valid routes found for ${school.displayName}`);
         return null;
       }
 
-      const closest = validResults.reduce((min, current) =>
-        current.distance < min.distance ? current : min
-      );
+      console.log('[Routing] Valid results:', validResults.map(r => ({
+        school: r.school,
+        place: r.place,
+        schoolLocation: r.schoolLocation,
+        placeLocation: r.location,
+        travelMode: r.travelMode
+      })));
+  
+      const closest = validResults.reduce((min, current) => {
+        return current.distance < min.distance ? current : min;
+      });
 
-      console.log(`Found closest ${amenityType?.label || amenityType} for ${school.displayName}:`, {
+      console.log('[Routing] Selected closest route:', {
+        school: closest.school,
         place: closest.place,
-        distance: `${closest.distance.toFixed(2)} km`,
-        duration: closest.time,
-        polylineLength: closest.overviewPolyline.length
+        distance: closest.distance,
+        schoolLocation: closest.schoolLocation,
+        placeLocation: closest.location
       });
 
       return closest;
-
     } catch (err) {
       console.error(`Routing error for ${school.displayName}`, {
         error: err.message,
-        stack: err.stack,
-        coordinates: `${schoolLat},${schoolLng}`,
-        placeCount: validPlaces.length
+        travelMode
       });
-      setError(`Failed to calculate routes for ${school.displayName}: ${err.message}`);
       return null;
-    } finally {
-      setLoading(false);
     }
   }, []);
 
-  const findClosestPlaces = useCallback(async (schools, allPlaces, amenityType) => {
+  const findClosestPlaces = useCallback(async (schools, allPlaces, amenityType, travelMode = 'walking') => {
+    console.log('[Batch] Starting batch processing with mode:', travelMode);
     if (!schools?.length || !allPlaces?.length) {
       console.warn('Invalid input for batch processing');
       return [];
@@ -186,12 +194,15 @@ export const useGoogleRouting = () => {
 
       for (const [index, school] of schools.entries()) {
         try {
+          console.log(`[Batch] Processing school ${index + 1}/${schools.length}: ${school.displayName}`);
           const schoolPlaces = allPlaces.filter(p =>
             p.schoolId === school.id || p.schoolName === school.displayName
           );
 
-          const closest = await findClosestPlace(school, schoolPlaces, amenityType);
-          if (closest) results.push(closest);
+          const closest = await findClosestPlace(school, schoolPlaces, amenityType, travelMode);
+          if (closest) {
+            results.push(closest);
+          }
 
           setProgress({
             current: index + 1,
@@ -200,14 +211,27 @@ export const useGoogleRouting = () => {
           });
 
         } catch (err) {
-          console.error(`Error processing ${school.displayName}:`, err);
+          console.error(`Error processing ${school.displayName}:`, {
+            error: err.message,
+            travelMode
+          });
         }
       }
+
+      console.log('[Batch] Final results:', results.map(r => ({
+        school: r.school,
+        place: r.place,
+        schoolLocation: r.schoolLocation,
+        placeLocation: r.location
+      })));
 
       return results;
 
     } catch (err) {
-      console.error('Batch processing error:', err);
+      console.error('Batch processing error:', {
+        error: err.message,
+        travelMode
+      });
       setError(`Batch processing failed: ${err.message}`);
       return [];
     } finally {

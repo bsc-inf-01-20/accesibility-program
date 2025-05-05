@@ -90,5 +90,6 @@ export const useGooglePlacesApi = () => {
     loading,
     error,
     clearError: () => setError(null)
+    
   };
 };

@@ -1,80 +1,128 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import L from 'leaflet';
+import { decode } from 'polyline';
 import 'leaflet/dist/leaflet.css';
-import { decodePolyline, setupLeafletIcons } from '../../utils/mapUtils';
 import './MapContainer.css';
 
-export const MapContainer = ({ schoolLocation, location, overviewPolyline }) => {
-  const mapRef = useRef(null);
-  const mapInstance = useRef(null);
-  const layersRef = useRef({
-    route: null,
-    markers: null
-  });
+export const MapContainer = ({ 
+  schoolLocation, 
+  schoolName = 'School', 
+  location, 
+  placeName = 'Destination', 
+  overviewPolyline,
+  distance,
+  time,
+  travelMode
+}) => {
+  const [map, setMap] = React.useState(null);
+  const mapRef = React.useRef(null);
 
+  // Custom marker icons
+  const createMarkerIcon = (emoji, color) => {
+    return L.divIcon({
+      className: 'custom-marker-icon',
+      html: `
+        <div class="marker-container" style="background-color: ${color}">
+          <div class="marker-emoji">${emoji}</div>
+        </div>
+      `,
+      iconSize: [40, 40],
+      iconAnchor: [20, 20], // This matches your marker-container center
+      popupAnchor: [0, -20]
+    });
+  };
+  
+
+  // Initialize map
   useEffect(() => {
-    if (!mapRef.current || !location) return;
+    if (!mapRef.current) return;
 
-    // Initialize map only once
-    if (!mapInstance.current) {
-      setupLeafletIcons();
-      mapInstance.current = L.map(mapRef.current, {
-        preferCanvas: true,
-      }).setView(
-        [location.lat, location.lng],
-        14
-      );
+    const newMap = L.map(mapRef.current, {
+      zoomControl: true,
+      attributionControl: false
+    }).setView([-15, 35], 13);
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-      }).addTo(mapInstance.current);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+    }).addTo(newMap);
 
-      layersRef.current.markers = L.layerGroup().addTo(mapInstance.current);
-    }
+    setMap(newMap);
+
+    return () => newMap.remove();
+  }, []);
+
+  // Update markers and routes
+  useEffect(() => {
+    if (!map) return;
 
     // Clear previous layers
-    layersRef.current.markers.clearLayers();
-    if (layersRef.current.route) {
-      mapInstance.current.removeLayer(layersRef.current.route);
-    }
+    map.eachLayer(layer => {
+      if (layer instanceof L.Marker || layer instanceof L.Polyline) {
+        map.removeLayer(layer);
+      }
+    });
 
-    // Add markers
+    // Add school marker
     if (schoolLocation) {
-      L.marker([schoolLocation.lat, schoolLocation.lng])
-        .addTo(layersRef.current.markers)
-        .bindPopup(`School: ${schoolLocation.lat.toFixed(4)}, ${schoolLocation.lng.toFixed(4)}`);
+      const schoolIcon = createMarkerIcon('🏫', '#3388ff');
+      const schoolMarker = L.marker([schoolLocation.lat, schoolLocation.lng], {
+        icon: schoolIcon,
+        title: schoolName
+      }).addTo(map);
+
+      schoolMarker.bindPopup(`
+        <div class="custom-popup">
+          <h3>${schoolName}</h3>
+          ${distance && `<p>Distance: ${distance.toFixed(1)} km</p>`}
+          ${time && `<p>Travel time: ${time}</p>`}
+        </div>
+      `);
     }
 
-    L.marker([location.lat, location.lng])
-      .addTo(layersRef.current.markers)
-      .bindPopup(`Destination: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`);
+    // Add destination marker
+    if (location) {
+      const placeIcon = createMarkerIcon('📍', '#ff4444');
+      const placeMarker = L.marker([location.lat, location.lng], {
+        icon: placeIcon,
+        title: placeName
+      }).addTo(map);
 
-    // Add route if available
+      placeMarker.bindPopup(`
+        <div class="custom-popup">
+          <h3>${placeName}</h3>
+          ${distance && `<p>${distance.toFixed(1)} km from school</p>`}
+        </div>
+      `);
+    }
+
+    // Add route polyline
     if (overviewPolyline) {
       try {
-        const coordinates = decodePolyline(overviewPolyline);
-        layersRef.current.route = L.polyline(coordinates, {
+        const latLngs = decode(overviewPolyline).map(([lat, lng]) => [lat, lng]);
+        L.polyline(latLngs, {
           color: '#3388ff',
-          weight: 5
-        }).addTo(mapInstance.current);
-
-        // Fit bounds to show everything
-        const bounds = layersRef.current.route.getBounds();
-        if (schoolLocation) bounds.extend([schoolLocation.lat, schoolLocation.lng]);
-        bounds.extend([location.lat, location.lng]);
-        mapInstance.current.fitBounds(bounds, { padding: [50, 50] });
+          weight: 6,
+          opacity: 0.8,
+          lineJoin: 'round'
+        }).addTo(map);
       } catch (error) {
-        console.error('Error rendering route:', error);
+        console.error('Error decoding polyline:', error);
       }
     }
 
-    return () => {
-      if (mapInstance.current) {
-        mapInstance.current.remove();
-        mapInstance.current = null;
-      }
-    };
-  }, [schoolLocation, location, overviewPolyline]);
+    // Fit bounds to show both markers
+    if (schoolLocation && location) {
+      map.fitBounds(L.latLngBounds(
+        [schoolLocation.lat, schoolLocation.lng],
+        [location.lat, location.lng]
+      ), { padding: [100, 100] });
+    }
+  }, [map, schoolLocation, schoolName, location, placeName, overviewPolyline, distance, time]);
 
-  return <div ref={mapRef} className="leaflet-popup-map" />;
+  return (
+    <div 
+      ref={mapRef} 
+      className="leaflet-map-container"
+    />
+  );
 };
