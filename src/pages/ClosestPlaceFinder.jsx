@@ -11,6 +11,7 @@ import {
 import { useFetchSchools } from "../Hooks/useFetchSchools";
 import { useGooglePlacesApi } from "../Hooks/useGooglePlacesApi";
 import { useGoogleRouting } from "../Hooks/useGoogleRouting";
+import { useSaveResults } from "../Hooks/useSaveResults";
 import { AMENITY_TYPES } from "../utils/constants";
 import { AmenitySelector } from "../components/AmenitySelector/AmenitySelector";
 import { ProgressTracker } from "../components/ProgressTracker/ProgressTracker";
@@ -28,11 +29,12 @@ export const ClosestPlaceFinder = () => {
   const {
     selectedLevels,
     allUnits,
-    selectedSchools: filteredSchools,
+    selectedSchools,
     loading: schoolsLoading,
     error: schoolsError,
     handleSelectLevel,
     fetchOrgUnits,
+    setSelectedSchools
   } = useFetchSchools();
 
   // Data processing
@@ -161,7 +163,7 @@ export const ClosestPlaceFinder = () => {
     setInvalidSchools([]);
 
     // Filter valid schools
-    const validSchools = filteredSchools.filter((school) => {
+    const validSchools = selectedSchools.filter((school) => {
       const coords = school?.geometry?.coordinates;
       const isValid =
         coords?.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1]);
@@ -178,7 +180,6 @@ export const ClosestPlaceFinder = () => {
       total: validSchools.length,
       isComplete: false,
     });
-    setShowCompletion(false);
 
     try {
       for (let i = 0; i < validSchools.length; i += BATCH_SIZE) {
@@ -219,6 +220,27 @@ export const ClosestPlaceFinder = () => {
     }
   };
 
+  const handleSave = async () => {
+    const saveResult = await save(allResults, selectedAmenity);
+    if (!saveResult.success) {
+      setVisibleNotices(prev => ({ ...prev, saveError: true }));
+    }
+  };
+
+  const handleExportCSV = () => {
+    const headers = ["School", "Place", "Distance (km)", "Time"].join(",");
+    const rows = allResults.map(r => 
+      `"${r.school}","${r.place}",${r.distance},"${r.time}"`
+    ).join("\n");
+    const csv = `${headers}\n${rows}`;
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${selectedAmenity.label}_results.csv`;
+    link.click();
+  };
+
   useEffect(() => {
     return () => {
       cancelRequested.current = true;
@@ -239,11 +261,12 @@ export const ClosestPlaceFinder = () => {
             error={schoolsError}
             handleSelectLevel={handleSelectLevel}
             fetchOrgUnits={fetchOrgUnits}
+            setSelectedSchools={setSelectedSchools}
           />
 
-          {filteredSchools.length > 0 && (
+          {selectedSchools.length > 0 && (
             <div className="selection-count">
-              {filteredSchools.length} schools selected
+              {selectedSchools.length} schools selected
             </div>
           )}
 
@@ -393,7 +416,7 @@ export const ClosestPlaceFinder = () => {
                 </div>
                 <div className="batch-progress">
                   Batch {Math.floor(currentBatchIndex / BATCH_SIZE) + 1}/
-                  {Math.ceil(filteredSchools.length / BATCH_SIZE)}
+                  {Math.ceil(selectedSchools.length / BATCH_SIZE)}
                 </div>
               </div>
             </div>

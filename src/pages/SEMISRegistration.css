@@ -1,0 +1,135 @@
+/* Main Container */
+.semis-container {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  font-family: 'Roboto', sans-serif;
+}
+
+/* School Banner - Now clearly visible */
+.school-banner {
+  background-color: #2c6693; /* DHIS2 blue */
+  color: white;
+  padding: 16px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.school-banner-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.school-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+}
+
+.school-label {
+  font-weight: bold;
+}
+
+.school-name {
+  font-weight: normal;
+  color: white;
+}
+
+/* Cards */
+.selection-card,
+.form-card,
+.location-card {
+  margin-bottom: 16px;
+  padding: 16px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* School Selection */
+.school-selection-container {
+  position: relative;
+}
+
+.search-input-container {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.uniform-input {
+  width: 100%;
+  min-width: 300px;
+}
+
+.dropdown-toggle {
+  height: 36px;
+  margin-bottom: 4px;
+}
+
+.school-dropdown {
+  position: absolute;
+  width: 100%;
+  max-height: 300px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-top: 5px;
+  z-index: 1000;
+}
+
+/* Location Search */
+.location-search {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  align-items: flex-end;
+}
+
+.search-button {
+  height: 36px;
+  margin-bottom: 4px;
+}
+
+/* Map Container */
+.map-container {
+  height: 400px;
+  width: 100%;
+  margin-top: 20px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* Buttons */
+.submit-button {
+  margin-top: 20px;
+  background-color: #2c6693;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .search-input-container,
+  .location-search {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .dropdown-toggle,
+  .search-button {
+    width: 100%;
+    margin-top: 8px;
+  }
+  
+  .map-container {
+    height: 300px;
+  }
+
+  .school-banner-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}

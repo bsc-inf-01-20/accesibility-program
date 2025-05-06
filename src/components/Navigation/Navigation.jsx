@@ -5,7 +5,7 @@ import './Navigation.css';
 export const Navigation = ({ collapsed, onCollapseToggle }) => {
   const menuItems = [
     { path: "/", label: "Proximity Analyzer", icon: "📍" },
-    { path: "/schools", label: "School Finder", icon: "🏫" },
+    { path: "/registration", label: "Student Registration", icon: "👨‍🎓" },
     { path: "/reports", label: "Reports", icon: "📊" },
     { path: "/settings", label: "Settings", icon: "⚙️" }
   ];
