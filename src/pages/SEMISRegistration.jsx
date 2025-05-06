@@ -1,35 +1,81 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Button,
   InputField,
-  SingleSelectField,
-  SingleSelectOption,
   NoticeBox,
-  CircularLoader
+  CircularLoader,
+  Menu,
+  MenuItem,
+  Card
 } from '@dhis2/ui';
-import { 
-  MapContainer, 
-  TileLayer, 
-  Marker, 
-  Popup,
-  useMapEvents 
-} from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { useFetchSchools } from '../Hooks/useFetchSchools';
-import { useStudentData } from '../Hooks/useStudentData';
 import { useSaveStudent } from '../Hooks/useSaveStudent';
-import HeatmapLayer from '../components/Maps/HeatmapLayer';
 import './SEMISRegistration.css';
 
-export const SEMISRegistration = () => {
-  const {
-    selectedSchools,
-    loading: schoolsLoading,
-    error: schoolsError,
-    setSelectedSchools
+// Fix Leaflet icons
+const DefaultIcon = L.icon({
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+});
+L.Marker.prototype.options.icon = DefaultIcon;
+
+const usePersistedSchool = () => {
+  const [school, setSchool] = useState(null);
+  useEffect(() => {
+    const saved = localStorage.getItem('selectedSchool');
+    if (saved) setSchool(JSON.parse(saved));
+  }, []);
+  const persistSchool = (newSchool) => {
+    localStorage.setItem('selectedSchool', JSON.stringify(newSchool));
+    setSchool(newSchool);
+  };
+  return [school, persistSchool];
+};
+
+const SchoolLocation = ({ school }) => {
+  const map = useMap();
+  
+  useEffect(() => {
+    if (school?.geometry?.coordinates) {
+      map.flyTo(
+        [school.geometry.coordinates[1], school.geometry.coordinates[0]], 
+        15
+      );
+    }
+  }, [school, map]);
+
+  if (!school?.geometry?.coordinates) return null;
+
+  return (
+    <Marker position={[school.geometry.coordinates[1], school.geometry.coordinates[0]]}>
+      <Popup>{school.displayName}</Popup>
+    </Marker>
+  );
+};
+
+const StudentLocation = ({ location }) => {
+  if (!location) return null;
+  return (
+    <Marker position={location}>
+      <Popup>Student's Location</Popup>
+    </Marker>
+  );
+};
+
+const SEMISRegistration = () => {
+  const { 
+    selectedSchools = [], 
+    loading, 
+    error 
   } = useFetchSchools();
 
-  const [activeSchool, setActiveSchool] = useState(null);
-  const [schoolSearchTerm, setSchoolSearchTerm] = useState('');
+  const [selectedSchool, setSelectedSchool] = usePersistedSchool();
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -39,50 +85,85 @@ export const SEMISRegistration = () => {
     coordinates: null
   });
   const [locationSearch, setLocationSearch] = useState('');
-  const [map, setMap] = useState(null);
+  const [showMap, setShowMap] = useState(false);
+  const { saveStudent, saving } = useSaveStudent();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedTerm, setDebouncedTerm] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
 
-  const { students, loading: studentsLoading, error: studentsError, refreshStudents } = useStudentData(activeSchool?.id);
-  const { saveStudent, saving, error: saveError } = useSaveStudent();
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedTerm(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
-  const filteredSchools = useMemo(() => {
-    if (!schoolSearchTerm) return selectedSchools;
-    return selectedSchools.filter(school => 
-      school.name.toLowerCase().includes(schoolSearchTerm.toLowerCase())
-    );
-  }, [selectedSchools, schoolSearchTerm]);
+  const displaySchools = selectedSchools.filter(school => 
+    school?.name?.toLowerCase()?.includes(debouncedTerm.toLowerCase())
+  );
+
+  const handleSchoolSelect = (school) => {
+    const validatedSchool = {
+      id: school.id,
+      displayName: school.name || school.displayName || 'Unnamed School',
+      geometry: school.geometry || {
+        type: "Point",
+        coordinates: [-1.2921, 36.8219]
+      }
+    };
+    setSelectedSchool(validatedSchool);
+    setIsOpen(false);
+  };
 
   const handleLocationSearch = async () => {
-    if (!locationSearch || !map) return;
-    
+    if (!locationSearch) return;
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}`
       );
       const data = await response.json();
-      
       if (data.length > 0) {
         const { lat, lon, display_name } = data[0];
-        map.flyTo([lat, lon], 15);
-        
         setFormData(prev => ({
           ...prev,
           residence: display_name,
           coordinates: [parseFloat(lat), parseFloat(lon)]
         }));
+        setShowMap(true);
       }
     } catch (err) {
       console.error('Location search failed:', err);
     }
   };
 
+  const handleMapClick = async (e) => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${e.latlng.lat}&lon=${e.latlng.lng}`
+      );
+      const data = await response.json();
+      setFormData(prev => ({
+        ...prev,
+        residence: data.display_name,
+        coordinates: [e.latlng.lat, e.latlng.lng]
+      }));
+    } catch (err) {
+      setFormData(prev => ({
+        ...prev,
+        residence: `Location at ${e.latlng.lat}, ${e.latlng.lng}`,
+        coordinates: [e.latlng.lat, e.latlng.lng]
+      }));
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!activeSchool) return;
+    if (!selectedSchool) return;
     
     try {
       await saveStudent({ 
         ...formData,
-        schoolId: activeSchool.id 
+        schoolId: selectedSchool.id 
       });
       
       setFormData({
@@ -94,216 +175,187 @@ export const SEMISRegistration = () => {
         coordinates: null
       });
       setLocationSearch('');
-      refreshStudents();
+      setShowMap(false);
     } catch (err) {
       console.error('Registration failed:', err);
     }
   };
 
-  const LocationPicker = ({ onSelect }) => {
-    const map = useMapEvents({
-      async click(e) {
-        try {
-          const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${e.latlng.lat}&lon=${e.latlng.lon}`
-          );
-          const data = await response.json();
-          onSelect([e.latlng.lat, e.latlng.lng], data.display_name);
-        } catch (err) {
-          onSelect([e.latlng.lat, e.latlng.lng]);
-        }
-      }
-    });
-    return null;
-  };
-
   return (
     <div className="semis-container">
-      <h1 className="semis-header">Student Registration System</h1>
+      <h1>Student Registration System</h1>
       
-      <div className="school-selection-section">
-        <h3 className="section-title">Select School</h3>
-        {schoolsLoading ? (
-          <CircularLoader small />
-        ) : (
-          <div className="school-selection-container">
-            <div className="school-search-box">
+      {!selectedSchool ? (
+        <Card className="selection-card">
+          <div className="school-selection-container" ref={containerRef}>
+            <div className="search-input-container">
               <InputField
-                label="Search schools"
+                label="Search and select your school"
                 placeholder="Type school name..."
-                value={schoolSearchTerm}
-                onChange={({ value }) => setSchoolSearchTerm(value)}
-                className="search-input"
-              />
-            </div>
-            <div className="school-dropdown-wrapper">
-              <SingleSelectField
-                selected={activeSchool?.id}
-                onChange={({ selected }) => {
-                  const school = selectedSchools.find(s => s.id === selected);
-                  setActiveSchool(school);
-                  if (map && school?.geometry?.coordinates) {
-                    map.flyTo([
-                      school.geometry.coordinates[1],
-                      school.geometry.coordinates[0]
-                    ], 13);
-                  }
+                value={searchTerm}
+                onChange={({ value }) => {
+                  setSearchTerm(value);
+                  setIsOpen(true);
                 }}
-                loading={schoolsLoading}
-                className="school-dropdown"
+                onFocus={() => setIsOpen(true)}
+                className="uniform-input"
+              />
+              <Button 
+                className="dropdown-toggle"
+                onClick={() => setIsOpen(!isOpen)}
+                primary
               >
-                {filteredSchools.length > 0 ? (
-                  filteredSchools.map(school => (
-                    <SingleSelectOption 
-                      key={school.id} 
-                      value={school.id} 
-                      label={school.name} 
-                    />
-                  ))
+                {isOpen ? '▲' : '▼'}
+              </Button>
+            </div>
+            
+            {isOpen && (
+              <div className="school-dropdown">
+                {loading ? (
+                  <div style={{ padding: '16px', textAlign: 'center' }}>
+                    <CircularLoader small />
+                    <p>Loading schools...</p>
+                  </div>
+                ) : error ? (
+                  <NoticeBox error title="Loading Error">
+                    {error.message || 'Failed to load schools'}
+                  </NoticeBox>
+                ) : displaySchools.length > 0 ? (
+                  <Menu>
+                    {displaySchools.map(school => (
+                      <MenuItem
+                        key={school.id}
+                        label={school.name || school.displayName}
+                        onClick={() => handleSchoolSelect(school)}
+                      />
+                    ))}
+                  </Menu>
                 ) : (
-                  <SingleSelectOption 
-                    value={null} 
-                    label="No matching schools found" 
-                    disabled
-                  />
+                  <NoticeBox>
+                    No schools match "{searchTerm}"
+                  </NoticeBox>
                 )}
-              </SingleSelectField>
+              </div>
+            )}
+          </div>
+        </Card>
+      ) : (
+        <>
+          <div className="school-banner">
+            <div className="school-banner-content">
+              <div className="school-info">
+                <span className="school-label">Selected School:</span>
+                <span className="school-name">{selectedSchool.displayName}</span>
+              </div>
+              <Button 
+                onClick={() => {
+                  setSelectedSchool(null);
+                  setSearchTerm('');
+                }}
+                secondary
+              >
+                Change School
+              </Button>
             </div>
           </div>
-        )}
-        {schoolsError && <NoticeBox error className="error-notice">{schoolsError}</NoticeBox>}
-      </div>
-      
-      {activeSchool ? (
-        <div className="registration-content">
-          <div className="registration-form-section">
-            <form onSubmit={handleSubmit} className="registration-form">
-              <div className="form-row">
+          
+          <div className="registration-form">
+            <form onSubmit={handleSubmit}>
+              <Card className="form-card">
                 <InputField
                   label="First Name"
                   value={formData.firstName}
-                  onChange={({ value }) => setFormData({ ...formData, firstName: value })}
+                  onChange={({ value }) => setFormData({...formData, firstName: value})}
                   required
-                  className="form-input"
+                  className="uniform-input"
                 />
-              </div>
-              
-              <div className="form-row">
+              </Card>
+
+              <Card className="form-card">
                 <InputField
                   label="Last Name"
                   value={formData.lastName}
-                  onChange={({ value }) => setFormData({ ...formData, lastName: value })}
+                  onChange={({ value }) => setFormData({...formData, lastName: value})}
                   required
-                  className="form-input"
+                  className="uniform-input"
                 />
-              </div>
-              
-              <div className="form-row">
-                <SingleSelectField
+              </Card>
+
+              <Card className="form-card">
+                <InputField
                   label="Gender"
-                  selected={formData.gender}
-                  onChange={({ selected }) => setFormData({ ...formData, gender: selected })}
-                  className="form-input"
-                >
-                  <SingleSelectOption value="male" label="Male"/>
-                  <SingleSelectOption value="female" label="Female"/>
-                  <SingleSelectOption value="other" label="Other"/>
-                </SingleSelectField>
-              </div>
-              
-              <div className="form-row">
+                  value={formData.gender}
+                  onChange={({ value }) => setFormData({...formData, gender: value})}
+                  placeholder="Male/Female/Other"
+                  required
+                  className="uniform-input"
+                />
+              </Card>
+
+              <Card className="form-card">
                 <InputField
                   label="Date of Birth"
                   type="date"
                   value={formData.birthDate}
-                  onChange={({ value }) => setFormData({ ...formData, birthDate: value })}
+                  onChange={({ value }) => setFormData({...formData, birthDate: value})}
                   required
-                  className="form-input"
+                  className="uniform-input"
                 />
-              </div>
-              
-              <div className="form-row location-search-row">
-                <div className="location-search-input">
+              </Card>
+
+              <Card className="location-card">
+                <div className="location-search">
                   <InputField
                     label="Place of Residence"
                     value={locationSearch}
                     onChange={({ value }) => setLocationSearch(value)}
-                    placeholder="Enter location to search on map"
+                    placeholder="Search location on map"
                     required
-                    className="form-input"
+                    className="uniform-input"
                   />
+                  <Button 
+                    onClick={handleLocationSearch}
+                    primary
+                    className="search-button"
+                  >
+                    Search on Map
+                  </Button>
                 </div>
-                <Button 
-                  onClick={handleLocationSearch}
-                  disabled={!locationSearch}
-                  className="location-search-button"
-                >
-                  Search & Set Location
-                </Button>
-              </div>
-              
-              <div className="form-actions">
-                <Button 
-                  type="submit" 
-                  primary 
-                  icon={saving ? <CircularLoader small /> : null}
-                  disabled={!formData.coordinates || saving}
-                  className="submit-button"
-                >
-                  {saving ? 'Registering...' : 'Register Student'}
-                </Button>
-              </div>
+                {showMap && (
+                  <div className="map-container">
+                    <MapContainer
+                      center={formData.coordinates || 
+                        (selectedSchool?.geometry?.coordinates 
+                          ? [selectedSchool.geometry.coordinates[1], selectedSchool.geometry.coordinates[0]] 
+                          : [-1.2921, 36.8219])}
+                      zoom={13}
+                      style={{ height: '400px', width: '100%' }}
+                      onClick={handleMapClick}
+                    >
+                      <TileLayer
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      />
+                      <SchoolLocation school={selectedSchool} />
+                      <StudentLocation location={formData.coordinates} />
+                    </MapContainer>
+                  </div>
+                )}
+              </Card>
+
+              <Button 
+                type="submit" 
+                primary 
+                loading={saving}
+                disabled={!formData.coordinates || saving}
+                className="submit-button"
+              >
+                {saving ? 'Registering...' : 'Register Student'}
+              </Button>
             </form>
           </div>
-          
-          <div className="map-visualization">
-            <MapContainer 
-              center={activeSchool.geometry?.coordinates 
-                ? [
-                    activeSchool.geometry.coordinates[1],
-                    activeSchool.geometry.coordinates[0]
-                  ]
-                : [0, 0]} 
-              zoom={13}
-              className="map-container"
-              whenCreated={setMap}
-            >
-              <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              />
-              
-              {activeSchool.geometry?.coordinates && (
-                <Marker position={[
-                  activeSchool.geometry.coordinates[1],
-                  activeSchool.geometry.coordinates[0]
-                ]}>
-                  <Popup>{activeSchool.name}</Popup>
-                </Marker>
-              )}
-              
-              <LocationPicker 
-                onSelect={(coords, name) => {
-                  setFormData(prev => ({
-                    ...prev,
-                    residence: name || `Location at ${coords.join(', ')}`,
-                    coordinates: coords
-                  }));
-                }}
-              />
-              
-              <HeatmapLayer students={students} />
-            </MapContainer>
-          </div>
-        </div>
-      ) : (
-        <NoticeBox title="No school selected" className="notice-box">
-          Please select a school to begin registration
-        </NoticeBox>
+        </>
       )}
-      
-      {saveError && <NoticeBox error className="error-notice">{saveError}</NoticeBox>}
-      {studentsError && <NoticeBox error className="error-notice">{studentsError}</NoticeBox>}
     </div>
   );
 };
