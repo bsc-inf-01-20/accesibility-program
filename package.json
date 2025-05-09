@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "start": "concurrently -n CLIENT,SERVER -c bgBlue.bold,bgGreen.bold \"yarn start:client\" \"yarn start:server\"",
-    "start:client": "d2-app-scripts start --proxy https://project.ccdev.org/emis",
+    "start:client": "d2-app-scripts start --proxy https://emis.ccdev.org/dev",
     "start:server": "nodemon server/server.js",
     "server": "node server/server.js",
     "build": "d2-app-scripts build",

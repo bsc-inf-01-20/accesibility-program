@@ -22,10 +22,11 @@ export const useGoogleRouting = () => {
   });
 
   const findClosestPlace = useCallback(async (school, places, amenityType, travelMode = 'walking') => {
-    console.log('[Routing] Starting search with mode:', travelMode, 'for school:', school.displayName);
+    console.log('[Routing] Received school:', school); 
+    console.log('[Routing] Starting search with mode:', travelMode, 'for school:', school.name);
     
     if (!school?.geometry?.coordinates || school.geometry.coordinates.length !== 2) {
-      console.warn(`Invalid school coordinates for ${school?.displayName || 'unknown school'}`);
+      console.warn(`Invalid school coordinates for ${school?.name || 'unknown school'}`);
       return null;
     }
   
@@ -33,7 +34,7 @@ export const useGoogleRouting = () => {
     const validPlaces = places.filter(place => place?.location?.lat && place?.location?.lng);
   
     if (validPlaces.length === 0) {
-      console.warn(`No valid places found for ${school.displayName}`);
+      console.warn(`No valid places found for ${school.name}`);
       return null;
     }
 
@@ -50,7 +51,7 @@ export const useGoogleRouting = () => {
         validPlaces.map((place, index) =>
           limit(async () => {
             try {
-              console.log(`[Routing] Requesting directions (${travelMode}) from ${school.displayName} to ${place.name}`);
+              console.log(`[Routing] Requesting directions (${travelMode}) from ${school.name} to ${place.name}`);
               const response = await axios.get('http://localhost:5000/api/directions', {
                 params: {
                   origin: `${schoolLat},${schoolLng}`,
@@ -71,7 +72,7 @@ export const useGoogleRouting = () => {
                   !response.data.routes?.[0]?.legs?.[0] ||
                   !response.data.routes[0].overview_polyline?.points) {
                 console.warn('Invalid route structure', {
-                  school: school.displayName,
+                  school: school.name,
                   place: place.name,
                   response: response.data
                 });
@@ -83,7 +84,7 @@ export const useGoogleRouting = () => {
 
               const result = {
                 // School information
-                school: school.displayName,
+                school: school.name,
                 schoolId: school.id,
                 schoolCoords: school.geometry.coordinates, // [lng, lat] array
                 schoolLocation: { lat: schoolLat, lng: schoolLng }, // {lat, lng} object
@@ -124,7 +125,7 @@ export const useGoogleRouting = () => {
 
               return result;
             } catch (err) {
-              console.error(`Failed to process ${place.name} for ${school.displayName}`, {
+              console.error(`Failed to process ${place.name} for ${school.name}`, {
                 error: err.message,
                 coordinates: {
                   school: `${schoolLat},${schoolLng}`,
@@ -140,7 +141,7 @@ export const useGoogleRouting = () => {
   
       const validResults = results.filter(Boolean);
       if (validResults.length === 0) {
-        console.warn(`No valid routes found for ${school.displayName}`);
+        console.warn(`No valid routes found for ${school.name}`);
         return null;
       }
 
@@ -166,7 +167,7 @@ export const useGoogleRouting = () => {
 
       return closest;
     } catch (err) {
-      console.error(`Routing error for ${school.displayName}`, {
+      console.error(`Routing error for ${school.name}`, {
         error: err.message,
         travelMode
       });
@@ -194,9 +195,9 @@ export const useGoogleRouting = () => {
 
       for (const [index, school] of schools.entries()) {
         try {
-          console.log(`[Batch] Processing school ${index + 1}/${schools.length}: ${school.displayName}`);
+          console.log(`[Batch] Processing school ${index + 1}/${schools.length}: ${school.name}`);
           const schoolPlaces = allPlaces.filter(p =>
-            p.schoolId === school.id || p.schoolName === school.displayName
+            p.schoolId === school.id || p.schoolName === school.name
           );
 
           const closest = await findClosestPlace(school, schoolPlaces, amenityType, travelMode);
@@ -211,7 +212,7 @@ export const useGoogleRouting = () => {
           });
 
         } catch (err) {
-          console.error(`Error processing ${school.displayName}:`, {
+          console.error(`Error processing ${school.name}:`, {
             error: err.message,
             travelMode
           });

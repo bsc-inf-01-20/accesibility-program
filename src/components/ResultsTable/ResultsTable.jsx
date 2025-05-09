@@ -53,11 +53,6 @@ export const ResultsTable = ({ places, loading, selectedAmenity }) => {
           {places.length > 0 ? (
             places.map((place) => {
               // Additional debug log for each place
-              console.log("Rendering place:", {
-                school: place.school,
-                travelMode: place.travelMode,
-                hasTravelMode: !!place.travelMode,
-              });
 
               return (
                 <TableRow key={getRowKey(place)}>

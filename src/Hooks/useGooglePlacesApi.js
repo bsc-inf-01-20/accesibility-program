@@ -8,7 +8,7 @@ export const useGooglePlacesApi = () => {
 
   const processSchool = async (school, amenityType) => {
     if (!school?.geometry?.coordinates) {
-      console.error('Missing coordinates for school:', school?.displayName);
+      console.error('Missing coordinates for school:', school?.name);
       return null;
     }
   
@@ -35,7 +35,7 @@ export const useGooglePlacesApi = () => {
       };
 
       const response = await axios.get(apiEndpoint, { params: searchParams });
-      return processApiResponse(response, school.displayName);
+      return processApiResponse(response, school.name);
   
     } catch (err) {
       console.error('Places API Error:', err);
