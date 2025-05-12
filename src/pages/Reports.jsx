@@ -10,6 +10,7 @@ const Reports = () => {
   return (
     <div className="page-container">
       <h1>Reports</h1>
+<<<<<<< HEAD
       <p>const Dashboard = () ={'>'} 
   const [schoolLocations, setSchoolLocations] = useState([]);
   const [pupilResidences, setPupilResidences] = useState([]);
@@ -89,6 +90,9 @@ const Reports = () => {
 
 export default Dashboard;
 </p>
+=======
+      <p>.</p>
+>>>>>>> 78307b5ea2238b595da57b2ed2412a72f868a6bc
     </div>
   );
 };

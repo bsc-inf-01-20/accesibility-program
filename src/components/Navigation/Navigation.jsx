@@ -4,8 +4,8 @@ import './Navigation.css';
 
 export const Navigation = ({ collapsed, onCollapseToggle }) => {
   const menuItems = [
-    { path: "/", label: "Place Finder", icon: "📍" },
-    { path: "/schools", label: "School Finder", icon: "🏫" },
+    { path: "/", label: "Proximity Analyzer", icon: "📍" },
+    { path: "/registration", label: "Student Registration", icon: "👨‍🎓" },
     { path: "/reports", label: "Reports", icon: "📊" },
     { path: "/settings", label: "Settings", icon: "⚙️" }
   ];
@@ -31,7 +31,7 @@ export const Navigation = ({ collapsed, onCollapseToggle }) => {
             className={({ isActive }) => 
               `menu-item ${isActive ? 'active' : ''}`
             }
-            title={collapsed ? item.label : ''} // Tooltip when collapsed
+            title={collapsed ? item.label : ''}
           >
             <span className="menu-item-icon">{item.icon}</span>
             {!collapsed && <span className="menu-item-label">{item.label}</span>}

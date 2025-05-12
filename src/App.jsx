@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Navigation } from './components/Navigation/Navigation';
 import ClosestPlaceFinder from './pages/ClosestPlaceFinder';
-import SchoolsFinder from './pages/SchoolsFinder';
+import SEMISRegistration from './pages/SEMISRegistration'; // Updated import
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import styles from './App.module.css';
@@ -22,7 +22,9 @@ const App = () => {
     };
 
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
   }, [isMobile]);
 
   const sidebarWidth = collapsed ? '60px' : '240px';
@@ -45,7 +47,7 @@ const App = () => {
           <div className={styles.contentWrapper}>
             <Routes>
               <Route path="/" element={<ClosestPlaceFinder />} />
-              <Route path="/schools" element={<SchoolsFinder />} />
+              <Route path="/registration" element={<SEMISRegistration />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
