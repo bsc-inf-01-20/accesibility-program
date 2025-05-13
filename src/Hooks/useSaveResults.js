@@ -1,59 +1,64 @@
-import { useDataMutation, useDataQuery } from '@dhis2/app-runtime';
-import { useState, useCallback } from 'react';
+import { useDataMutation, useDataQuery } from "@dhis2/app-runtime";
+import { useState, useCallback } from "react";
+import { useSaveToMongo } from "./useSaveToMongo";
 
 const BATCH_SIZE = 10;
-const PROGRAM_ID = 'VYD4079wSUr';
-const PROGRAM_STAGE_ID = 'gHp5I7XORP9';
+const PROGRAM_ID = "VYD4079wSUr";
+const PROGRAM_STAGE_ID = "gHp5I7XORP9";
 
-// Data Elements
 const DATA_ELEMENTS = {
-  PLACE: 'akoE76HDkwg',
-  DISTANCE: 'l1nBaEurXfW',
-  DURATION: 'fiyyHPNZvsG',
-  AMENITY_TYPE: 'akoE76HDkwg',
-  PRIORITY: 'QYT4MnvOOVi',
-  POLYLINE: 'HHQ2t2S2b0y',
-  TRAVEL_MODE: 'ZxecTk3l2zj'
+  PLACE: "YYDH7JgRN2w",
+  DISTANCE: "l1nBaEurXfW",
+  DURATION: "fiyyHPNZvsG",
+  AMENITY_TYPE: "akoE76HDkwg",
+  PRIORITY: "QYT4MnvOOVi",
+  TRAVEL_MODE: "oEmCUEadook",
+  // Removed POLYLINE since it's not needed
 };
 
 const EXISTING_EVENTS_QUERY = {
   existingEvents: {
-    resource: 'events',
-    params: {
-      program: PROGRAM_ID,
-      programStage: PROGRAM_STAGE_ID,
-      fields: 'event,orgUnit,program,programStage,dataValues[dataElement,value]',
-      paging: false
-    }
-  }
+    resource: "events",
+    params: ({ variables }) => {
+      const { orgUnits, amenityType, travelMode } = variables;
+
+      if (!orgUnits?.length || !amenityType || !travelMode) {
+        throw new Error(
+          "Missing required filters (orgUnits, amenityType, or travelMode)"
+        );
+      }
+
+      return {
+        program: PROGRAM_ID,
+        programStage: PROGRAM_STAGE_ID,
+        orgUnit: orgUnits.join(","),
+        filter: [
+          `${DATA_ELEMENTS.AMENITY_TYPE}:eq:${amenityType}`,
+          `${DATA_ELEMENTS.TRAVEL_MODE}:eq:${travelMode}`,
+        ],
+        fields: "event,orgUnit,dataValues[dataElement,value]",
+        paging: false,
+      };
+    },
+  },
 };
 
 const CREATE_EVENTS_MUTATION = {
-  resource: 'tracker',
-  type: 'create',
+  resource: "tracker",
+  type: "create",
   data: ({ events }) => ({ events }),
   params: {
     skipNotifications: true,
-    importStrategy: 'CREATE_AND_UPDATE',
-    atomicMode: 'OBJECT'
-  }
+    importStrategy: "CREATE_AND_UPDATE",
+    atomicMode: "OBJECT",
+  },
 };
 
 const JOB_STATUS_QUERY = {
   jobStatus: {
-    resource: 'system/tasks',
-    id: ({ jobId }) => jobId
-  }
-};
-
-const JOB_REPORT_QUERY = {
-  jobReport: {
-    resource: 'tracker/jobs',
+    resource: "system/tasks",
     id: ({ jobId }) => jobId,
-    params: {
-      fields: 'id,created,lastUpdated,status,message,jobType,progress,imported,updated,deleted,ignored'
-    }
-  }
+  },
 };
 
 export const useSaveResults = () => {
@@ -61,11 +66,16 @@ export const useSaveResults = () => {
     total: 0,
     processed: 0,
     successes: 0,
-    failures: 0
+    failures: 0,
+    mongoSuccesses: 0,
+    mongoFailures: 0
   });
+  
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   
+  const { saveBulk: saveToMongo } = useSaveToMongo();
+
   const { refetch: fetchExistingEvents } = useDataQuery(EXISTING_EVENTS_QUERY, { 
     lazy: true,
     onError: (error) => {
@@ -76,225 +86,245 @@ export const useSaveResults = () => {
 
   const [mutate] = useDataMutation(CREATE_EVENTS_MUTATION);
   const { refetch: fetchJobStatus } = useDataQuery(JOB_STATUS_QUERY, { lazy: true });
-  const { refetch: fetchJobReport } = useDataQuery(JOB_REPORT_QUERY, { lazy: true });
 
-  const log = (message, data = null, type = 'info') => {
+  const log = (message, data = null, type = "info") => {
     const timestamp = new Date().toISOString();
     const styles = {
-      info: 'color: blue;',
-      success: 'color: green;',
-      error: 'color: red;',
-      warning: 'color: orange;',
-      debug: 'color: gray;'
+      info: "color: blue;",
+      success: "color: green;",
+      error: "color: red;",
+      warning: "color: orange;",
+      debug: "color: gray;"
     };
     
     console.log(`%c[${timestamp}] ${message}`, styles[type]);
-    if (data) {
-      console.log(`%c[${timestamp}] Data:`, styles.debug, data);
-    }
+    if (data) console.log(`%c[${timestamp}] Data:`, styles.debug, data);
   };
 
-  const checkForExistingEvents = async (schoolIds) => {
-    try {
-      if (!schoolIds?.length) {
-        log('No school IDs provided for event check', null, 'warning');
-        return {};
-      }
-      
-      log(`Checking existing events for ${schoolIds.length} schools`, schoolIds);
-      
-      const { existingEvents } = await fetchExistingEvents({
-        variables: {
-          orgUnit: schoolIds.join(',')
-        }
-      });
-      
-      log('Existing events API response', existingEvents);
-      
-      const eventsArray = existingEvents?.events || [];
-      const existingMap = {};
-      
-      eventsArray.forEach(event => {
-        const orgUnit = event.orgUnit;
-        if (orgUnit && event.program === PROGRAM_ID && event.programStage === PROGRAM_STAGE_ID) {
-          existingMap[orgUnit] = { 
-            event: event.event,
-            fullEvent: event 
+  const checkForExistingEvents = async (schoolIds, selectedAmenity, travelMode) => {
+    log("Checking for existing DHIS2 events", {
+      schoolIds,
+      selectedAmenity: selectedAmenity.label,
+      travelMode
+    });
+
+    const existingMap = {};
+
+    for (const orgUnit of schoolIds) {
+      try {
+        const { existingEvents } = await fetchExistingEvents({
+          variables: {
+            orgUnits: [orgUnit],
+            amenityType: selectedAmenity.label,
+            travelMode: travelMode
+          }
+        });
+
+        const eventsArray = existingEvents?.events || [];
+        let mostRecentEvent = null;
+        let mostRecentDate = null;
+
+        eventsArray.forEach((event) => {
+          const dataValues = {};
+          event.dataValues?.forEach((dv) => {
+            dataValues[dv.dataElement] = dv.value;
+          });
+
+          if (
+            dataValues[DATA_ELEMENTS.AMENITY_TYPE] === selectedAmenity.label &&
+            dataValues[DATA_ELEMENTS.TRAVEL_MODE] === travelMode
+          ) {
+            const eventDate = event.eventDate || event.created;
+            if (!mostRecentDate || new Date(eventDate) > new Date(mostRecentDate)) {
+              mostRecentEvent = event;
+              mostRecentDate = eventDate;
+            }
+          }
+        });
+
+        if (mostRecentEvent) {
+          existingMap[orgUnit] = {
+            event: mostRecentEvent.event,
+            fullEvent: mostRecentEvent
           };
-          log(`Found existing event for orgUnit ${orgUnit}`, event);
+          log(`Found existing event for ${orgUnit}`, mostRecentEvent);
         }
-      });
-      
-      log(`Found ${Object.keys(existingMap).length} existing events`);
-      return existingMap;
-    } catch (error) {
-      log('Event check failed', error, 'error');
-      setError('Failed to check existing events');
-      setSaving(false);
-      return {};
+      } catch (error) {
+        log(`Failed to check events for ${orgUnit}`, error, "warning");
+        continue;
+      }
     }
+
+    return existingMap;
   };
 
   const checkJobStatus = async (jobId) => {
     try {
-      log(`Checking job status for job ${jobId}`);
+      log(`Checking DHIS2 job status for ${jobId}`);
       const { jobStatus } = await fetchJobStatus({ variables: { jobId } });
-      log(`Job ${jobId} status: ${jobStatus?.data?.status}`, jobStatus);
-      return jobStatus?.data?.status;
+      const status = jobStatus?.data?.status;
+      log(`Job ${jobId} status: ${status}`);
+      return status;
     } catch (error) {
-      log(`Failed to check job status for ${jobId}`, error, 'error');
-      return 'UNKNOWN';
-    }
-  };
-
-  const getJobReport = async (jobId) => {
-    try {
-      log(`Fetching job report for ${jobId}`);
-      const { jobReport } = await fetchJobReport({ variables: { jobId } });
-      log(`Job ${jobId} report`, jobReport);
-      return jobReport;
-    } catch (error) {
-      log(`Failed to get job report for ${jobId}`, error, 'error');
-      return null;
+      log(`Failed to check job status for ${jobId}`, error, "error");
+      return "UNKNOWN";
     }
   };
 
   const createEventPayload = (result, selectedAmenity, existingEvent) => {
     try {
-      if (!result.schoolId) {
-        throw new Error('Missing schoolId');
+      if (!result.schoolId) throw new Error("Missing schoolId");
+      
+      const requiredFields = {
+        distance: result.distance,
+        duration: result.duration,
+        place: result.place
+      };
+
+      for (const [field, value] of Object.entries(requiredFields)) {
+        if (value === undefined || value === null || value === "") {
+          throw new Error(`Missing required field: ${field}`);
+        }
       }
 
-      const today = new Date().toISOString().split('T')[0];
-      
-      const basePayload = {
+      const today = new Date().toISOString().split("T")[0];
+      const payload = {
         program: PROGRAM_ID,
-        programStage: PROGRAM_STAGE_ID,
         orgUnit: result.schoolId,
         occurredAt: today,
-        status: 'COMPLETED',
+        status: "COMPLETED",
         dataValues: [
-          { dataElement: DATA_ELEMENTS.PLACE, value: String(result.place || '') },
-          { dataElement: DATA_ELEMENTS.DISTANCE, value: Number(result.distance || 0).toFixed(1) },
-          { dataElement: DATA_ELEMENTS.DURATION, value: Math.round(Number(result.duration || 0) / 60) },
-          { dataElement: DATA_ELEMENTS.AMENITY_TYPE, value: String(selectedAmenity?.label || '') },
-          { dataElement: DATA_ELEMENTS.PRIORITY, value: calculatePriority(result.distance) },
-          { dataElement: DATA_ELEMENTS.POLYLINE, value: result.overviewPolyline || 'N/A' },
-          { 
-            dataElement: DATA_ELEMENTS.TRAVEL_MODE, 
-            value: ['walking', 'driving', 'cycling', 'public_transport'].includes(result.travelMode) 
-              ? result.travelMode 
-              : 'walking' 
-          }
+          {
+            dataElement: DATA_ELEMENTS.PLACE,
+            value: String(result.place),
+          },
+          {
+            dataElement: DATA_ELEMENTS.DISTANCE,
+            value: Number(result.distance).toFixed(1),
+          },
+          {
+            dataElement: DATA_ELEMENTS.DURATION,
+            value: Math.round(Number(result.duration) / 60),
+          },
+          {
+            dataElement: DATA_ELEMENTS.PRIORITY,
+            value: calculatePriority(result.distance),
+          },
+          {
+            dataElement: DATA_ELEMENTS.AMENITY_TYPE,
+            value: selectedAmenity.label,
+          },
+          {
+            dataElement: DATA_ELEMENTS.TRAVEL_MODE,
+            value: result.travelMode || "walking",
+          },
         ].filter(dv => dv.value !== undefined && dv.value !== null)
       };
 
       if (existingEvent?.event) {
-        log(`Updating existing event ${existingEvent.event} for orgUnit ${result.schoolId}`);
-        return { ...basePayload, event: existingEvent.event };
+        log(`Updating existing event ${existingEvent.event}`);
+        return { ...payload, event: existingEvent.event };
       }
 
-      log(`Creating new event for orgUnit ${result.schoolId}`);
-      return basePayload;
+      log(`Creating new event for ${result.schoolId}`);
+      return payload;
     } catch (error) {
-      log('Error creating event payload', { error, result }, 'error');
+      log("Error creating event payload", { error, result }, "error");
       throw error;
     }
   };
 
   const saveBatch = async (batch, selectedAmenity, existingEventsMap) => {
-  try {
-    log(`Processing batch of ${batch.length} events`);
-    
-    const events = batch.map(result => {
-      try {
-        return createEventPayload(result, selectedAmenity, existingEventsMap[result.schoolId]);
-      } catch (error) {
-        log(`Failed to create payload for school ${result.schoolId}`, error, 'error');
-        return null;
-      }
-    }).filter(Boolean);
+    try {
+      log(`Processing DHIS2 batch of ${batch.length} events`);
 
-    log(`Prepared ${events.length} valid events for saving`, events);
-
-    if (events.length === 0) {
-      log('No valid events to save in this batch', null, 'warning');
-      return { status: 'SKIPPED', imported: 0, updated: 0, ignored: batch.length };
-    }
-
-    log('Sending events to server', events);
-    const response = await mutate({ events });
-    log('Server response received', response);
-    
-    if (response?.response?.jobId) {
-      const jobId = response.response.jobId;
-      log(`Tracker job created with ID: ${jobId}`);
-      
-      let jobStatus;
-      let attempts = 0;
-      const maxAttempts = 30;
-      const delay = 1000;
-      
-      do {
-        await new Promise(resolve => setTimeout(resolve, delay));
-        const statusResponse = await fetchJobStatus({ variables: { jobId } });
-        jobStatus = statusResponse?.jobStatus?.data?.status;
-        attempts++;
-        log(`Job status check ${attempts}/${maxAttempts}: ${jobStatus}`);
-        
-        if (jobStatus === 'ERROR' || jobStatus === 'FAILED') {
-          const report = await getJobReport(jobId);
-          log('Job failed - full report:', report, 'error');
-          throw new Error(`Job failed: ${report?.message || 'Unknown error'}`);
+      const events = batch.map(result => {
+        try {
+          return createEventPayload(result, selectedAmenity, existingEventsMap[result.schoolId]);
+        } catch (error) {
+          log(`Failed to create payload for ${result.schoolId}`, error, "error");
+          return null;
         }
+      }).filter(Boolean);
+
+      if (events.length === 0) {
+        log("No valid DHIS2 events in batch", null, "warning");
+        return {
+          status: "SKIPPED",
+          imported: 0,
+          updated: 0,
+          ignored: batch.length
+        };
+      }
+
+      log(`Sending ${events.length} events to DHIS2`);
+      const response = await mutate({ events });
+      log("DHIS2 response received", response);
+
+      if (response?.response?.jobId) {
+        const jobId = response.response.jobId;
+        log(`Tracking DHIS2 job ${jobId}`);
         
-      } while (jobStatus === 'RUNNING' && attempts < maxAttempts);
-      
-      if (jobStatus !== 'COMPLETED') {
-        throw new Error(`Job did not complete within ${maxAttempts} seconds`);
+        let jobStatus;
+        let attempts = 0;
+        const maxAttempts = 30;
+        
+        while (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          jobStatus = await checkJobStatus(jobId);
+          attempts++;
+          
+          if (jobStatus === "COMPLETED") break;
+          if (jobStatus === "ERROR" || jobStatus === "FAILED") {
+            throw new Error('DHIS2 job failed');
+          }
+        }
+
+        if (jobStatus !== "COMPLETED") {
+          throw new Error('DHIS2 job timeout');
+        }
+
+        // Simplified success response without report checking
+        return {
+          status: "SUCCESS",
+          imported: events.length, // Assume all imported since job completed
+          updated: 0, // Can't determine without report
+          ignored: 0  // Can't determine without report
+        };
       }
 
-      log(`Job ${jobId} completed successfully`);
-      const report = await getJobReport(jobId);
-      log('Job completion report', report);
-      
-      if (!report?.response?.stats?.created && !report?.response?.stats?.updated) {
-        throw new Error('No events were created or updated despite job completion');
-      }
-
+      // Fallback for direct API responses
       return {
-        status: 'SUCCESS',
-        imported: report?.response?.stats?.created || 0,
-        updated: report?.response?.stats?.updated || 0,
-        ignored: report?.response?.stats?.ignored || 0
+        status: "SUCCESS",
+        imported: events.length,
+        updated: 0,
+        ignored: 0
+      };
+    } catch (error) {
+      log("DHIS2 batch save failed", error, "error");
+      return {
+        status: "ERROR",
+        imported: 0,
+        updated: 0,
+        ignored: batch.length,
+        error: error.message
       };
     }
-
-    // Fallback for direct API responses (non-tracker)
-    return {
-      status: 'SUCCESS',
-      imported: response?.response?.stats?.created || 0,
-      updated: response?.response?.stats?.updated || 0,
-      ignored: response?.response?.stats?.ignored || 0
-    };
-  } catch (error) {
-    log('Batch save failed', error, 'error');
-    return {
-      status: 'ERROR',
-      imported: 0,
-      updated: 0,
-      ignored: batch.length,
-      error: error.message
-    };
-  }
-};
+  };
 
   const saveBulk = useCallback(async (results, selectedAmenity) => {
-    if (!results?.length) {
-      log('No results to save', null, 'warning');
-      setError('No results to save');
+    if (!results?.length || !selectedAmenity?.label) {
+      const errorMsg = !results?.length ? "No results to save" : "Please select an amenity type";
+      log(errorMsg, null, "warning");
+      setError(errorMsg);
       return { failures: [] };
     }
+
+    const travelMode = results[0]?.travelMode || "walking";
+    log(`Starting bulk save for ${results.length} results`, {
+      amenity: selectedAmenity.label,
+      travelMode
+    });
 
     setSaving(true);
     setError(null);
@@ -302,50 +332,68 @@ export const useSaveResults = () => {
       total: results.length,
       processed: 0,
       successes: 0,
-      failures: 0
+      failures: 0,
+      mongoSuccesses: 0,
+      mongoFailures: 0
     });
 
-    log(`Starting bulk save for ${results.length} results`, results);
-
     try {
+      // Start MongoDB save (non-blocking)
+      const mongoPromise = saveToMongo(results)
+        .then(({ success }) => {
+          log(`MongoDB save ${success ? "succeeded" : "failed"}`);
+          setProgress(prev => ({
+            ...prev,
+            mongoSuccesses: success ? results.length : 0,
+            mongoFailures: success ? 0 : results.length
+          }));
+        })
+        .catch(error => {
+          log("MongoDB save failed", error, "error");
+          setProgress(prev => ({ ...prev, mongoFailures: results.length }));
+        });
+
+      // Process DHIS2 save
       const schoolIds = results.map(r => r.schoolId);
-      const existingEventsMap = await checkForExistingEvents(schoolIds);
+      const existingEventsMap = await checkForExistingEvents(schoolIds, selectedAmenity, travelMode);
       const failures = [];
 
       for (let i = 0; i < results.length; i += BATCH_SIZE) {
         const batch = results.slice(i, i + BATCH_SIZE);
-        log(`Processing batch ${i/BATCH_SIZE + 1} of ${Math.ceil(results.length/BATCH_SIZE)}`);
-        
+        log(`Processing batch ${i / BATCH_SIZE + 1} of ${Math.ceil(results.length / BATCH_SIZE)}`);
+
         const batchResult = await saveBatch(batch, selectedAmenity, existingEventsMap);
 
         setProgress(prev => ({
           ...prev,
           processed: prev.processed + batch.length,
-          successes: prev.successes + (batchResult.imported + batchResult.updated),
+          successes: prev.successes + batchResult.imported, // Only using imported count now
           failures: prev.failures + batchResult.ignored
         }));
 
-        log(`Batch ${i/BATCH_SIZE + 1} results`, batchResult);
-
-        if (batchResult.status === 'ERROR') {
+        if (batchResult.status === "ERROR") {
           failures.push({
             batchIndex: i / BATCH_SIZE,
             error: batchResult.error,
             events: batch.map(b => b.schoolId)
           });
-          log(`Batch ${i/BATCH_SIZE + 1} failed`, batchResult.error, 'error');
         }
       }
 
-      log(`Bulk save completed with ${failures.length} failures`, failures);
+      await mongoPromise;
+      log("Bulk save completed", {
+        successes: progress.successes,
+        failures: progress.failures,
+        mongoSuccesses: progress.mongoSuccesses
+      });
+      
       return { failures };
     } catch (error) {
-      log('Bulk save failed', error, 'error');
+      log("Bulk save failed", error, "error");
       setError(error.message);
       return { failures: [{ error: error.message }] };
     } finally {
       setSaving(false);
-      log('Save process completed');
     }
   }, []);
 
@@ -355,12 +403,12 @@ export const useSaveResults = () => {
     error, 
     progress,
     cancel: () => {
-      log('Save process cancelled by user');
+      log("Save process cancelled");
       setSaving(false);
-    } 
+    }
   };
 };
 
 function calculatePriority(distance) {
-  return distance > 10 ? 'High' : distance > 5 ? 'Medium' : 'Low';
+  return distance > 10 ? "High" : distance > 5 ? "Medium" : "Low";
 }

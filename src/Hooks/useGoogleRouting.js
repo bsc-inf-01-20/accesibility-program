@@ -52,7 +52,7 @@ export const useGoogleRouting = () => {
           limit(async () => {
             try {
               console.log(`[Routing] Requesting directions (${travelMode}) from ${school.name} to ${place.name}`);
-              const response = await axios.get('http://localhost:5000/api/directions', {
+              const response = await axios.get('https://server-nu-peach.vercel.app/api/directions', {
                 params: {
                   origin: `${schoolLat},${schoolLng}`,
                   destination: `${place.location.lat},${place.location.lng}`,

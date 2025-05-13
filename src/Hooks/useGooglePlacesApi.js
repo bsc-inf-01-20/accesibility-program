@@ -24,7 +24,7 @@ export const useGooglePlacesApi = () => {
       }
 
       // Standard handling for other amenity types
-      const apiEndpoint = "http://localhost:5000/api/places/search";
+      const apiEndpoint = "https://server-nu-peach.vercel.app/api/places/search";
       const amenityConfig = AMENITY_TYPES[amenityType] || amenityType;
       
       const searchParams = {
@@ -49,7 +49,7 @@ export const useGooglePlacesApi = () => {
   // Special function for Malawi markets
   const fetchMalawiMarkets = async (lat, lng) => {
     try {
-      const response = await axios.get("http://localhost:5000/api/places/malawi-markets", {
+      const response = await axios.get("https://server-nu-peach.vercel.app/api/places/malawi-markets", {
         params: { lat, lng, radius: 5000 }
       });
       return processApiResponse(response, "markets");

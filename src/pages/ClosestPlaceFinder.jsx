@@ -52,11 +52,11 @@ export const ClosestPlaceFinder = () => {
   } = useGoogleRouting();
 
   // Save results hook (updated for bulk saving)
-  const { 
-    saveBulk, 
-    saving, 
-    error: saveError, 
-    progress: saveProgress 
+  const {
+    saveBulk,
+    saving,
+    error: saveError,
+    progress: saveProgress,
   } = useSaveResults();
 
   // State management
@@ -123,9 +123,8 @@ export const ClosestPlaceFinder = () => {
       const foundPlaces = await processSchool(school, amenityType);
       checkCancelled();
 
-      const validPlaces = foundPlaces?.filter(
-        (p) => p?.location?.lat && p?.location?.lng
-      ) || [];
+      const validPlaces =
+        foundPlaces?.filter((p) => p?.location?.lat && p?.location?.lng) || [];
 
       if (validPlaces.length === 0) {
         setNoResultsSchools((prev) => [...prev, school.name]);
@@ -242,7 +241,7 @@ export const ClosestPlaceFinder = () => {
   const handleSave = async () => {
     try {
       const { failures } = await saveBulk(allResults, selectedAmenity);
-      
+
       if (failures.length > 0) {
         setVisibleNotices((prev) => ({ ...prev, saveError: true }));
         setVisibleNotices((prev) => ({ ...prev, saveError: true }));
@@ -262,9 +261,18 @@ export const ClosestPlaceFinder = () => {
 
   // Export to CSV
   const handleExportCSV = () => {
-    const headers = ["School", "Place", "Distance (km)", "Time", "Travel Mode"].join(",");
+    const headers = [
+      "School",
+      "Place",
+      "Distance (km)",
+      "Time",
+      "Travel Mode",
+    ].join(",");
     const rows = allResults
-      .map((r) => `"${r.school}","${r.place}",${r.distance},"${r.time}","${r.travelMode}"`)
+      .map(
+        (r) =>
+          `"${r.school}","${r.place}",${r.distance},"${r.time}","${r.travelMode}"`
+      )
       .join("\n");
     const csv = `${headers}\n${rows}`;
     const blob = new Blob([csv], { type: "text/csv" });
@@ -320,11 +328,7 @@ export const ClosestPlaceFinder = () => {
 
         <div className="action-section">
           <ButtonStrip>
-            <Button
-              onClick={handleFetchData}
-              disabled={schoolsLoading}
-              primary
-            >
+            <Button onClick={handleFetchData} disabled={schoolsLoading} primary>
               {isProcessing ? (
                 <span className="loading-content">
                   <CircularLoader small className="loading-icon" />
@@ -339,7 +343,9 @@ export const ClosestPlaceFinder = () => {
 
             <Button
               onClick={() => setShowRouteSelector(true)}
-              disabled={!processingProgress.isComplete || allResults.length === 0}
+              disabled={
+                !processingProgress.isComplete || allResults.length === 0
+              }
               secondary
             >
               View Routes
@@ -348,19 +354,23 @@ export const ClosestPlaceFinder = () => {
             <Button
               onClick={handleSave}
               disabled={
-                !processingProgress.isComplete || 
-                saving || 
+                !processingProgress.isComplete ||
+                saving ||
                 allResults.length === 0
               }
               secondary
               icon={saving ? <CircularLoader small /> : null}
             >
-              {saving ? `Saving (${saveProgress.processed}/${saveProgress.total})` : "Save Results"}
+              {saving
+                ? `Saving (${saveProgress.processed}/${saveProgress.total})`
+                : "Save Results"}
             </Button>
 
             <Button
               onClick={handleExportCSV}
-              disabled={!processingProgress.isComplete || allResults.length === 0}
+              disabled={
+                !processingProgress.isComplete || allResults.length === 0
+              }
               secondary
             >
               Export to CSV
@@ -416,7 +426,8 @@ export const ClosestPlaceFinder = () => {
                 title="Notice"
                 onClose={() => clearNotice("invalidSchools")}
               >
-                {invalidSchools.length} schools skipped due to invalid coordinates
+                {invalidSchools.length} schools skipped due to invalid
+                coordinates
               </NoticeBox>
             )}
 
@@ -426,7 +437,8 @@ export const ClosestPlaceFinder = () => {
                 title="Notice"
                 onClose={() => clearNotice("noResultsSchools")}
               >
-                No {selectedAmenity.label} found near: {noResultsSchools.join(", ")}
+                No {selectedAmenity.label} found near:{" "}
+                {noResultsSchools.join(", ")}
               </NoticeBox>
             )}
 
@@ -441,15 +453,17 @@ export const ClosestPlaceFinder = () => {
             )}
 
             {/* Success Notices */}
-            {processingProgress.isComplete && visibleNotices.completionMessage && (
-              <NoticeBox
-                success
-                title="Processing Complete"
-                onClose={() => clearNotice("completionMessage")}
-              >
-                Processed {processingProgress.processed} schools, found {allResults.length} results
-              </NoticeBox>
-            )}
+            {processingProgress.isComplete &&
+              visibleNotices.completionMessage && (
+                <NoticeBox
+                  success
+                  title="Processing Complete"
+                  onClose={() => clearNotice("completionMessage")}
+                >
+                  Processed {processingProgress.processed} schools, found{" "}
+                  {allResults.length} results
+                </NoticeBox>
+              )}
 
             {saveSuccess && visibleNotices.saveSuccess && (
               <NoticeBox
@@ -465,15 +479,19 @@ export const ClosestPlaceFinder = () => {
 
         {/* Progress Tracking */}
         {processingProgress.total > 0 && (
-          <div className={`progress-section ${isProcessing ? "is-processing" : ""}`}>
+          <div
+            className={`progress-section ${isProcessing ? "is-processing" : ""}`}
+          >
             <div className="progress-header">
               <h3>{isProcessing ? "Processing..." : "Completed"}</h3>
               <div className="progress-metrics">
                 <div>
-                  Processed: {processingProgress.processed}/{processingProgress.total}
+                  Processed: {processingProgress.processed}/
+                  {processingProgress.total}
                 </div>
                 <div className="batch-progress">
-                  Batch {Math.floor(currentBatchIndex / PROCESSING_BATCH_SIZE) + 1}/
+                  Batch{" "}
+                  {Math.floor(currentBatchIndex / PROCESSING_BATCH_SIZE) + 1}/
                   {Math.ceil(selectedSchools.length / PROCESSING_BATCH_SIZE)}
                 </div>
               </div>
@@ -501,7 +519,8 @@ export const ClosestPlaceFinder = () => {
                     setShowRouteSelector(false);
                   }}
                 >
-                  <strong>{result.school}</strong> to <strong>{result.place}</strong>
+                  <strong>{result.school}</strong> to{" "}
+                  <strong>{result.place}</strong>
                   <div className="route-meta">
                     <span>Distance: {result.distance} km</span>
                     <span>Time: {result.time}</span>
@@ -533,7 +552,7 @@ export const ClosestPlaceFinder = () => {
 
       {/* Results Table */}
       <ResultsTable
-        places={batchResults}
+        places={allResults} // Changed from batchResults to allResults
         loading={isProcessing}
         selectedAmenity={selectedAmenity}
       />
