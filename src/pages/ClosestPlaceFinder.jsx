@@ -22,7 +22,7 @@ import "./ClosestPlaceFinder.css";
 import { TravelModeSelector } from "../components/TravelModeSelector/TravelModeSelector";
 import { CircularLoader } from "@dhis2/ui";
 
-const BATCH_SIZE = 5; // Process 5 schools at a time
+const BATCH_SIZE = 5;
 
 export const ClosestPlaceFinder = () => {
   // School selection
@@ -65,6 +65,7 @@ export const ClosestPlaceFinder = () => {
   const [selectedTravelMode, setSelectedTravelMode] = useState("walking");
   const [isProcessing, setIsProcessing] = useState(false);
   const [cancellationMessage, setCancellationMessage] = useState(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const cancelRequested = useRef(false);
   const [visibleNotices, setVisibleNotices] = useState({
     schoolsError: true,
@@ -74,6 +75,8 @@ export const ClosestPlaceFinder = () => {
     noResultsSchools: true,
     cancellationMessage: true,
     completionMessage: true,
+    saveError: true,
+    saveSuccess: true,
   });
 
   const clearNotice = (noticeType) => {
@@ -86,18 +89,10 @@ export const ClosestPlaceFinder = () => {
       setInvalidSchools([]);
     } else if (noticeType === "noResultsSchools") {
       setNoResultsSchools([]);
+    } else if (noticeType === "saveSuccess") {
+      setSaveSuccess(false);
     }
   };
-
-  // Progress tracking
-  const [progress, setProgress] = useState({
-    processed: 0,
-    total: 0,
-    isComplete: false,
-  });
-
-  // Button state logic
-  const isButtonDisabled = schoolsLoading && !isProcessing;
 
   const checkCancelled = () => {
     if (cancelRequested.current) {
@@ -134,6 +129,7 @@ export const ClosestPlaceFinder = () => {
             school: school.displayName,
             schoolId: school.id,
             batchId: currentBatchIndex,
+            overviewPolyline: closest.route?.overview_polyline?.points || null
           }
         : null;
     } catch (err) {
@@ -145,7 +141,6 @@ export const ClosestPlaceFinder = () => {
   };
 
   const handleFetchData = async () => {
-    // Cancel if already processing
     if (isProcessing) {
       cancelRequested.current = true;
       setIsProcessing(false);
@@ -153,7 +148,7 @@ export const ClosestPlaceFinder = () => {
       return;
     }
 
-    if (isButtonDisabled) return;
+    if (schoolsLoading) return;
 
     // Reset states
     cancelRequested.current = false;
@@ -161,6 +156,7 @@ export const ClosestPlaceFinder = () => {
     setCancellationMessage(null);
     setNoResultsSchools([]);
     setInvalidSchools([]);
+    setSaveSuccess(false);
 
     // Filter valid schools
     const validSchools = selectedSchools.filter((school) => {
@@ -202,13 +198,7 @@ export const ClosestPlaceFinder = () => {
           isComplete: i + batch.length >= validSchools.length,
         }));
 
-        await new Promise((resolve) => {
-          const timeout = setTimeout(resolve, 300);
-          if (cancelRequested.current) {
-            clearTimeout(timeout);
-            resolve();
-          }
-        });
+        await new Promise((resolve) => setTimeout(resolve, 300));
       }
     } catch (err) {
       if (err.message !== "Processing cancelled") {
@@ -222,8 +212,19 @@ export const ClosestPlaceFinder = () => {
 
   const handleSave = async () => {
     const saveResult = await save(allResults, selectedAmenity);
-    if (!saveResult.success) {
-      setVisibleNotices(prev => ({ ...prev, saveError: true }));
+    if (saveResult.success) {
+      setSaveSuccess(true);
+      setVisibleNotices(prev => ({ 
+        ...prev, 
+        saveSuccess: true,
+        saveError: false 
+      }));
+    } else {
+      setVisibleNotices(prev => ({ 
+        ...prev, 
+        saveError: true,
+        saveSuccess: false 
+      }));
     }
   };
 
@@ -240,6 +241,12 @@ export const ClosestPlaceFinder = () => {
     link.download = `${selectedAmenity.label}_results.csv`;
     link.click();
   };
+
+  const [progress, setProgress] = useState({
+    processed: 0,
+    total: 0,
+    isComplete: false,
+  });
 
   useEffect(() => {
     return () => {
@@ -286,7 +293,7 @@ export const ClosestPlaceFinder = () => {
           <ButtonStrip>
             <Button
               onClick={handleFetchData}
-              disabled={isButtonDisabled}
+              disabled={schoolsLoading}
               primary
             >
               {isProcessing ? (
@@ -399,6 +406,26 @@ export const ClosestPlaceFinder = () => {
               >
                 Processed {progress.processed} schools, found{" "}
                 {allResults.length} results
+              </NoticeBox>
+            )}
+            {saveSuccess && visibleNotices.saveSuccess && (
+              <NoticeBox
+                success
+                title="Success"
+                onClose={() => clearNotice("saveSuccess")}
+                showCloseButton
+              >
+                Results saved successfully!
+              </NoticeBox>
+            )}
+            {saveError && visibleNotices.saveError && (
+              <NoticeBox
+                error
+                title="Error"
+                onClose={() => clearNotice("saveError")}
+                showCloseButton
+              >
+                {saveError}
               </NoticeBox>
             )}
           </div>

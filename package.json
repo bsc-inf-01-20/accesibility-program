@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "start": "concurrently -n CLIENT,SERVER -c bgBlue.bold,bgGreen.bold \"yarn start:client\" \"yarn start:server\"",
-    "start:client": "d2-app-scripts start --proxy https://project.ccdev.org/emis",
+    "start:client": "d2-app-scripts start --proxy https://emis.ccdev.org/dev",
     "start:server": "nodemon server/server.js",
     "server": "node server/server.js",
     "build": "d2-app-scripts build",
@@ -39,6 +39,7 @@
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.1.0",
     "https": "^1.0.0",
+    "idb": "^8.0.3",
     "leaflet": "^1.9.4",
     "leaflet.markercluster": "^1.5.3",
     "mapbox-gl": "2.15.0",

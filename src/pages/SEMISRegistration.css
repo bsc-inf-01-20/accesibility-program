@@ -6,9 +6,14 @@
   font-family: 'Roboto', sans-serif;
 }
 
-/* School Banner - Now clearly visible */
+/* Error Notice */
+.error-notice {
+  margin-bottom: 20px;
+}
+
+/* School Banner */
 .school-banner {
-  background-color: #2c6693; /* DHIS2 blue */
+  background-color: #2c6693;
   color: white;
   padding: 16px;
   border-radius: 4px;
@@ -82,54 +87,147 @@
 }
 
 /* Location Search */
+.location-search-container {
+  margin-bottom: 16px;
+}
+
 .location-search {
   display: flex;
   gap: 10px;
-  margin-bottom: 16px;
-  align-items: flex-end;
+  margin-bottom: 8px;
 }
 
-.search-button {
+.map-button {
   height: 36px;
-  margin-bottom: 4px;
+  min-width: 120px;
+  margin-top: 22px;
 }
 
-/* Map Container */
-.map-container {
-  height: 400px;
+/* Location Results */
+.location-results {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.location-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  color: #666;
+}
+
+/* Location Buttons */
+.location-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.current-location-button,
+.clear-location-button {
+  height: 36px;
+  flex-grow: 1;
+}
+
+.current-location-button {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.current-location-button:hover {
+  background-color: #e0e0e0;
+}
+
+.clear-location-button {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.clear-location-button:hover {
+  background-color: #f5c6cb;
+}
+
+/* Modal Map */
+.modal-map-container {
+  height: 500px;
   width: 100%;
-  margin-top: 20px;
+  margin-bottom: 16px;
   border-radius: 4px;
   overflow: hidden;
+  border: 1px solid #e0e0e0;
 }
 
-/* Buttons */
+.selected-location {
+  padding: 12px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+}
+
+.selected-location p {
+  margin: 0;
+  word-break: break-word;
+}
+
+/* Submit Button */
 .submit-button {
   margin-top: 20px;
   background-color: #2c6693;
 }
 
+/* Modal Overrides */
+.dhis2-ui-modal {
+  z-index: 1001 !important;
+}
+
+.dhis2-ui-modal-content {
+  padding: 0 !important;
+}
+
+/* Form Validation */
+.dhis2-ui-inputfield--error {
+  border-color: #e53935 !important;
+}
+
+.dhis2-ui-inputfield-error-text {
+  color: #e53935;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
-  .search-input-container,
-  .location-search {
+  .search-input-container {
     flex-direction: column;
     align-items: stretch;
   }
   
-  .dropdown-toggle,
-  .search-button {
+  .dropdown-toggle {
     width: 100%;
     margin-top: 8px;
   }
   
-  .map-container {
-    height: 300px;
-  }
-
-  .school-banner-content {
+  .location-search {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
+  }
+  
+  .map-button {
+    width: 100%;
+    margin-top: 8px;
+  }
+  
+  .location-buttons {
+    flex-direction: column;
+  }
+  
+  .current-location-button,
+  .clear-location-button {
+    width: 100%;
+  }
+  
+  .modal-map-container {
+    height: 300px;
   }
 }
