@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Button,
   InputField,
@@ -12,13 +12,14 @@ import {
   ModalContent,
   ModalActions
 } from '@dhis2/ui';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useFetchSchools } from '../Hooks/useFetchSchools';
 import { useSaveStudent } from '../Hooks/useSaveStudent';
 import './SEMISRegistration.css';
 
+// Fix Leaflet icons
 const DefaultIcon = L.icon({
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
@@ -26,6 +27,13 @@ const DefaultIcon = L.icon({
   iconSize: [25, 41],
   iconAnchor: [12, 41],
 });
+
+const SchoolIcon = L.icon({
+  iconUrl: 'https://cdn0.iconfinder.com/data/icons/small-n-flat/24/678111-map-marker-512.png',
+  iconSize: [32, 32],
+  iconAnchor: [16, 32]
+});
+
 L.Marker.prototype.options.icon = DefaultIcon;
 
 const usePersistedSchool = () => {
@@ -41,34 +49,23 @@ const usePersistedSchool = () => {
   return [school, persistSchool];
 };
 
-const SchoolLocation = ({ school }) => {
+const LocationPicker = ({ onLocationSelect, center, zoom }) => {
   const map = useMap();
   
   useEffect(() => {
-    if (school?.geometry?.coordinates) {
-      map.flyTo(
-        [school.geometry.coordinates[1], school.geometry.coordinates[0]], 
-        15
-      );
+    if (center) {
+      map.flyTo(center, zoom || 15);
     }
-  }, [school, map]);
+  }, [center, zoom, map]);
 
-  if (!school?.geometry?.coordinates) return null;
-
-  return (
-    <Marker position={[school.geometry.coordinates[1], school.geometry.coordinates[0]]}>
-      <Popup>{school.displayName}</Popup>
-    </Marker>
-  );
-};
-
-const StudentLocation = ({ location }) => {
-  if (!location) return null;
-  return (
-    <Marker position={location}>
-      <Popup>Student's Location</Popup>
-    </Marker>
-  );
+  useMapEvents({
+    click(e) {
+      onLocationSelect(e.latlng);
+      map.flyTo(e.latlng, 15);
+    }
+  });
+  
+  return null;
 };
 
 const SEMISRegistration = () => {
@@ -85,44 +82,39 @@ const SEMISRegistration = () => {
     gender: '',
     birthDate: '',
     residence: '',
-    coordinates: '',
-    coordinatesDisplay: ''
+    coordinates: null,
+    coordinatesText: ''
   });
-  const [errors, setErrors] = useState({});
-  const [locationSearch, setLocationSearch] = useState('');
-  const [locationLoading, setLocationLoading] = useState(false);
-  const [locationResults, setLocationResults] = useState([]);
-  const [showLocationResults, setShowLocationResults] = useState(false);
-  const { saveStudent, saving, error: saveError } = useSaveStudent();
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedTerm, setDebouncedTerm] = useState('');
   const [isOpen, setIsOpen] = useState(false);
-  const [mapModalOpen, setMapModalOpen] = useState(false);
   const containerRef = useRef(null);
+  const [mapModalOpen, setMapModalOpen] = useState(false);
+  const [mapCenter, setMapCenter] = useState([-1.2921, 36.8219]);
+  const [mapZoom, setMapZoom] = useState(13);
+  const [searchResults, setSearchResults] = useState([]);
+  const [showResults, setShowResults] = useState(false);
+  const { saveStudent, saving } = useSaveStudent();
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedTerm(searchTerm), 300);
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  const displaySchools = useMemo(() => {
-    return selectedSchools.filter(school => 
-      school?.name?.toLowerCase()?.includes(debouncedTerm.toLowerCase())
-    );
-  }, [selectedSchools, debouncedTerm]);
+  const displaySchools = selectedSchools.filter(school => 
+    school?.name?.toLowerCase()?.includes(debouncedTerm.toLowerCase())
+  );
 
   const validateForm = () => {
-    const newErrors = {};
-    if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
-    if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
-    if (!formData.gender.trim()) newErrors.gender = 'Gender is required';
-    if (!formData.birthDate) newErrors.birthDate = 'Date of birth is required';
-    if (!formData.residence) newErrors.residence = 'Please select a location';
-    if (!formData.coordinates) newErrors.coordinates = 'Location coordinates are required';
-    if (!selectedSchool) newErrors.school = 'Please select a school';
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return (
+      formData.firstName.trim() !== '' &&
+      formData.lastName.trim() !== '' &&
+      formData.gender.trim() !== '' &&
+      formData.birthDate.trim() !== '' &&
+      formData.residence.trim() !== '' &&
+      formData.coordinates !== null &&
+      selectedSchool !== null
+    );
   };
 
   const handleSchoolSelect = (school) => {
@@ -136,129 +128,82 @@ const SEMISRegistration = () => {
     };
     setSelectedSchool(validatedSchool);
     setIsOpen(false);
-    setErrors(prev => ({ ...prev, school: undefined }));
   };
 
-  const handleCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setErrors(prev => ({
-        ...prev,
-        residence: 'Geolocation is not supported by your browser'
-      }));
+  const handleLocationSearch = async (searchText) => {
+    if (!searchText) {
+      setSearchResults([]);
       return;
     }
-
-    setLocationLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const coords = [position.coords.latitude, position.coords.longitude];
-        setFormData(prev => ({
-          ...prev,
-          residence: 'Current Location',
-          coordinates: coords.join(', '),
-          coordinatesDisplay: coords.map(c => c.toFixed(6)).join(', ')
-        }));
-        setLocationLoading(false);
-        setErrors(prev => ({ ...prev, residence: undefined }));
-      },
-      (error) => {
-        setLocationLoading(false);
-        setErrors(prev => ({
-          ...prev,
-          residence: `Unable to get your location: ${error.message}`
-        }));
-      }
-    );
-  };
-
-  const searchMalawiLocations = async (query) => {
-    if (!query.trim()) {
-      setLocationResults([]);
-      return;
-    }
-
-    setLocationLoading(true);
+    
     try {
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=mw&limit=5`
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchText)}`
       );
       const data = await response.json();
-      setLocationResults(data);
+      setSearchResults(data.slice(0, 5));
     } catch (err) {
       console.error('Location search failed:', err);
-      setErrors(prev => ({
-        ...prev,
-        residence: 'Failed to search locations. Please try again.'
-      }));
-    } finally {
-      setLocationLoading(false);
+      setSearchResults([]);
     }
   };
 
-  const handleLocationSelect = (location) => {
-    const { lat, lon, display_name } = location;
-    const coords = [parseFloat(lat), parseFloat(lon)];
+  const handleResidenceChange = (value) => {
+    setFormData(prev => ({
+      ...prev,
+      residence: value
+    }));
+    handleLocationSearch(value);
+    setShowResults(true);
+  };
+
+  const selectSearchResult = (result) => {
+    const { lat, lon, display_name } = result;
     setFormData(prev => ({
       ...prev,
       residence: display_name,
-      coordinates: coords.join(', '),
-      coordinatesDisplay: coords.map(c => c.toFixed(6)).join(', ')
+      coordinates: [parseFloat(lat), parseFloat(lon)],
+      coordinatesText: `${lat}, ${lon}`
     }));
-    setShowLocationResults(false);
-    setErrors(prev => ({ ...prev, residence: undefined }));
+    setShowResults(false);
   };
 
-  const handleMapClick = async (e) => {
-    try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${e.latlng.lat}&lon=${e.latlng.lng}`
-      );
-      const data = await response.json();
-      const coords = [e.latlng.lat, e.latlng.lng];
-      setFormData(prev => ({
-        ...prev,
-        residence: data.display_name || `Location at ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`,
-        coordinates: coords.join(', '),
-        coordinatesDisplay: coords.map(c => c.toFixed(6)).join(', ')
-      }));
-      setErrors(prev => ({ ...prev, residence: undefined }));
-    } catch (err) {
-      const coords = [e.latlng.lat, e.latlng.lng];
-      setFormData(prev => ({
-        ...prev,
-        residence: `Location at ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`,
-        coordinates: coords.join(', '),
-        coordinatesDisplay: coords.map(c => c.toFixed(6)).join(', ')
-      }));
-      setErrors(prev => ({ ...prev, residence: undefined }));
-    }
-  };
-
-  const handleManualMapSearch = () => {
+  const handleMapButtonClick = () => {
+    if (!selectedSchool) return;
+    
+    const schoolCoords = selectedSchool.geometry.coordinates;
+    setMapCenter([schoolCoords[1], schoolCoords[0]]);
+    setMapZoom(15);
     setMapModalOpen(true);
   };
 
-  const handleMapConfirm = () => {
-    setMapModalOpen(false);
-  };
-
-  const handleMapCancel = () => {
-    setMapModalOpen(false);
-  };
-
-  const handleClearLocation = () => {
-    setFormData(prev => ({
-      ...prev,
-      residence: '',
-      coordinates: '',
-      coordinatesDisplay: ''
-    }));
-    setLocationSearch('');
+  const handleMapClick = async (latlng) => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}`
+      );
+      const data = await response.json();
+      
+      setFormData(prev => ({
+        ...prev,
+        residence: data.display_name || `Location at ${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`,
+        coordinates: [latlng.lat, latlng.lng],
+        coordinatesText: `${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`
+      }));
+      
+    } catch (err) {
+      setFormData(prev => ({
+        ...prev,
+        residence: `Location at ${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`,
+        coordinates: [latlng.lat, latlng.lng],
+        coordinatesText: `${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`
+      }));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (!selectedSchool || !formData.coordinates) return;
     
     try {
       await saveStudent({ 
@@ -272,11 +217,9 @@ const SEMISRegistration = () => {
         gender: '',
         birthDate: '',
         residence: '',
-        coordinates: '',
-        coordinatesDisplay: ''
+        coordinates: null,
+        coordinatesText: ''
       });
-      setLocationSearch('');
-      setErrors({});
     } catch (err) {
       console.error('Registration failed:', err);
     }
@@ -285,12 +228,6 @@ const SEMISRegistration = () => {
   return (
     <div className="semis-container">
       <h1>Student Registration System</h1>
-      
-      {saveError && (
-        <NoticeBox error title="Registration Error" className="error-notice">
-          {saveError.message || 'Failed to register student. Please try again.'}
-        </NoticeBox>
-      )}
       
       {!selectedSchool ? (
         <Card className="selection-card">
@@ -306,8 +243,6 @@ const SEMISRegistration = () => {
                 }}
                 onFocus={() => setIsOpen(true)}
                 className="uniform-input"
-                error={!!errors.school}
-                validationText={errors.school}
               />
               <Button 
                 className="dropdown-toggle"
@@ -360,9 +295,8 @@ const SEMISRegistration = () => {
                 onClick={() => {
                   setSelectedSchool(null);
                   setSearchTerm('');
-                  setErrors(prev => ({ ...prev, school: undefined }));
                 }}
-                secondary
+                className="change-school-button"
               >
                 Change School
               </Button>
@@ -375,14 +309,9 @@ const SEMISRegistration = () => {
                 <InputField
                   label="First Name"
                   value={formData.firstName}
-                  onChange={({ value }) => {
-                    setFormData({...formData, firstName: value});
-                    setErrors(prev => ({ ...prev, firstName: undefined }));
-                  }}
+                  onChange={({ value }) => setFormData({...formData, firstName: value})}
                   required
                   className="uniform-input"
-                  error={!!errors.firstName}
-                  validationText={errors.firstName}
                 />
               </Card>
 
@@ -390,31 +319,28 @@ const SEMISRegistration = () => {
                 <InputField
                   label="Last Name"
                   value={formData.lastName}
-                  onChange={({ value }) => {
-                    setFormData({...formData, lastName: value});
-                    setErrors(prev => ({ ...prev, lastName: undefined }));
-                  }}
+                  onChange={({ value }) => setFormData({...formData, lastName: value})}
                   required
                   className="uniform-input"
-                  error={!!errors.lastName}
-                  validationText={errors.lastName}
                 />
               </Card>
 
               <Card className="form-card">
-                <InputField
-                  label="Gender"
-                  value={formData.gender}
-                  onChange={({ value }) => {
-                    setFormData({...formData, gender: value});
-                    setErrors(prev => ({ ...prev, gender: undefined }));
-                  }}
-                  placeholder="Male/Female/Other"
-                  required
-                  className="uniform-input"
-                  error={!!errors.gender}
-                  validationText={errors.gender}
-                />
+                <div className="select-wrapper">
+                  <label htmlFor="gender-select" className="select-label required-field">Gender</label>
+                  <select
+                    id="gender-select"
+                    value={formData.gender}
+                    onChange={(e) => setFormData({...formData, gender: e.target.value})}
+                    required
+                    className="uniform-input"
+                  >
+                    <option value="">Select Gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
               </Card>
 
               <Card className="form-card">
@@ -422,151 +348,59 @@ const SEMISRegistration = () => {
                   label="Date of Birth"
                   type="date"
                   value={formData.birthDate}
-                  onChange={({ value }) => {
-                    setFormData({...formData, birthDate: value});
-                    setErrors(prev => ({ ...prev, birthDate: undefined }));
-                  }}
+                  onChange={({ value }) => setFormData({...formData, birthDate: value})}
                   required
                   className="uniform-input"
-                  error={!!errors.birthDate}
-                  validationText={errors.birthDate}
                 />
               </Card>
 
               <Card className="location-card">
-                <div className="location-search-container">
-                  <div className="location-search">
+                <div className="location-fields">
+                  <div className="residence-field-container">
                     <InputField
                       label="Place of Residence"
                       value={formData.residence}
-                      onChange={({ value }) => {
-                        setFormData(prev => ({ ...prev, residence: value }));
-                        setLocationSearch(value);
-                        searchMalawiLocations(value);
-                        setShowLocationResults(true);
-                        setErrors(prev => ({ ...prev, residence: undefined }));
-                      }}
-                      placeholder="Search for a location in Malawi"
+                      onChange={({ value }) => handleResidenceChange(value)}
+                      placeholder="Type to search locations"
                       required
                       className="uniform-input"
-                      error={!!errors.residence}
-                      validationText={errors.residence}
                     />
-                    <Button 
-                      onClick={handleManualMapSearch}
-                      primary
-                      className="map-button"
-                    >
-                      Select on Map
-                    </Button>
-                  </div>
-                  
-                  {showLocationResults && locationSearch && (
-                    <div className="location-results">
-                      {locationLoading ? (
-                        <div className="location-loading">
-                          <CircularLoader small />
-                          <span>Searching locations...</span>
-                        </div>
-                      ) : locationResults.length > 0 ? (
+                    {showResults && searchResults.length > 0 && (
+                      <div className="search-results-dropdown">
                         <Menu>
-                          {locationResults.map((location, index) => (
+                          {searchResults.map((result, index) => (
                             <MenuItem
                               key={index}
-                              label={location.display_name}
-                              onClick={() => handleLocationSelect(location)}
+                              label={result.display_name}
+                              onClick={() => selectSearchResult(result)}
                             />
                           ))}
                         </Menu>
-                      ) : (
-                        <NoticeBox>
-                          No locations found in Malawi matching "{locationSearch}"
-                        </NoticeBox>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <InputField
-                  label="Coordinates"
-                  value={formData.coordinatesDisplay}
-                  readOnly
-                  className="uniform-input"
-                  error={!!errors.coordinates}
-                  validationText={errors.coordinates}
-                />
-
-                <div className="location-buttons">
+                      </div>
+                    )}
+                  </div>
+                  <InputField
+                    label="Coordinates"
+                    value={formData.coordinatesText || ''}
+                    readOnly
+                    placeholder="Will update automatically"
+                    className="uniform-input coordinates-field"
+                  />
                   <Button 
-                    onClick={handleCurrentLocation}
-                    secondary
-                    className="current-location-button"
-                    loading={locationLoading}
+                    onClick={handleMapButtonClick}
+                    primary
+                    className="map-button"
                   >
-                    Use Current Location
+                    {formData.coordinates ? 'Update on Map' : 'Select on Map'}
                   </Button>
-                  {formData.residence && (
-                    <Button 
-                      onClick={handleClearLocation}
-                      secondary
-                      className="clear-location-button"
-                    >
-                      Clear Location
-                    </Button>
-                  )}
                 </div>
               </Card>
-
-              <Modal open={mapModalOpen} onClose={handleMapCancel} large>
-                <ModalTitle>Select Student's Location on Map</ModalTitle>
-                <ModalContent>
-                  <div className="modal-map-container">
-                    <MapContainer
-                      center={formData.coordinates ? 
-                        formData.coordinates.split(',').map(Number) : 
-                        [-13.2543, 34.3015]}
-                      zoom={formData.coordinates ? 13 : 7}
-                      style={{ height: '500px', width: '100%' }}
-                      onClick={handleMapClick}
-                    >
-                      <TileLayer
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                      />
-                      <SchoolLocation school={selectedSchool} />
-                      {formData.coordinates && (
-                        <StudentLocation location={formData.coordinates.split(',').map(Number)} />
-                      )}
-                    </MapContainer>
-                  </div>
-                  <div className="selected-location">
-                    {formData.residence && (
-                      <p><strong>Selected Location:</strong> {formData.residence}</p>
-                    )}
-                    {formData.coordinatesDisplay && (
-                      <p><strong>Coordinates:</strong> {formData.coordinatesDisplay}</p>
-                    )}
-                  </div>
-                </ModalContent>
-                <ModalActions>
-                  <Button onClick={handleMapCancel} secondary>
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={handleMapConfirm} 
-                    primary 
-                    disabled={!formData.coordinates}
-                  >
-                    Confirm Location
-                  </Button>
-                </ModalActions>
-              </Modal>
 
               <Button 
                 type="submit" 
                 primary 
                 loading={saving}
-                disabled={saving}
+                disabled={!validateForm() || saving}
                 className="submit-button"
               >
                 {saving ? 'Registering...' : 'Register Student'}
@@ -574,6 +408,68 @@ const SEMISRegistration = () => {
             </form>
           </div>
         </>
+      )}
+
+      {mapModalOpen && (
+        <Modal
+          large
+          open={mapModalOpen}
+          onClose={() => setMapModalOpen(false)}
+        >
+          <ModalTitle>Select Student Location</ModalTitle>
+          <ModalContent>
+            <div className="map-modal-container">
+              <MapContainer
+                center={mapCenter}
+                zoom={mapZoom}
+                style={{ height: '60vh', width: '100%' }}
+              >
+                <TileLayer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                />
+                {selectedSchool?.geometry?.coordinates && (
+                  <Marker 
+                    position={[
+                      selectedSchool.geometry.coordinates[1],
+                      selectedSchool.geometry.coordinates[0]
+                    ]}
+                    icon={SchoolIcon}
+                  >
+                    <Popup>
+                      <strong>School Location</strong><br/>
+                      {selectedSchool.displayName}
+                    </Popup>
+                  </Marker>
+                )}
+                {formData.coordinates && (
+                  <Marker position={formData.coordinates}>
+                    <Popup>
+                      <strong>Student Location</strong><br/>
+                      {formData.residence || "Selected Location"}
+                    </Popup>
+                  </Marker>
+                )}
+                <LocationPicker 
+                  onLocationSelect={handleMapClick} 
+                  center={mapCenter}
+                  zoom={mapZoom}
+                />
+              </MapContainer>
+            </div>
+          </ModalContent>
+          <ModalActions>
+            <Button onClick={() => setMapModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              primary 
+              onClick={() => setMapModalOpen(false)}
+            >
+              Confirm Location
+            </Button>
+          </ModalActions>
+        </Modal>
       )}
     </div>
   );
