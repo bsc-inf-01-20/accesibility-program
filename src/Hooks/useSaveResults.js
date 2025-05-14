@@ -13,7 +13,6 @@ const DATA_ELEMENTS = {
   AMENITY_TYPE: "akoE76HDkwg",
   PRIORITY: "QYT4MnvOOVi",
   TRAVEL_MODE: "oEmCUEadook",
-  // Removed POLYLINE since it's not needed
 };
 
 const EXISTING_EVENTS_QUERY = {
