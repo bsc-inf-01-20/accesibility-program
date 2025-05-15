@@ -94,7 +94,7 @@ const SEMISRegistration = () => {
   const [mapZoom, setMapZoom] = useState(13);
   const [searchResults, setSearchResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
-  const { saveStudent, saving } = useSaveStudent();
+  const { saveStudent, saving, error: saveError, success, reset } = useSaveStudent();
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedTerm(searchTerm), 300);
@@ -203,31 +203,53 @@ const SEMISRegistration = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedSchool || !formData.coordinates) return;
-    
+    if (!validateForm()) {
+      alert('Please fill all required fields');
+      return;
+    }
+
     try {
-      await saveStudent({ 
+      const { success, error } = await saveStudent({ 
         ...formData,
-        schoolId: selectedSchool.id 
+        schoolId: selectedSchool.id,
+        coordinatesText: formData.coordinates?.join(',')
       });
-      
-      setFormData({
-        firstName: '',
-        lastName: '',
-        gender: '',
-        birthDate: '',
-        residence: '',
-        coordinates: null,
-        coordinatesText: ''
-      });
+
+      if (success) {
+        setFormData({
+          firstName: '',
+          lastName: '',
+          gender: '',
+          birthDate: '',
+          residence: '',
+          coordinates: null,
+          coordinatesText: ''
+        });
+        reset();
+      } else if (error) {
+        alert(`Registration failed: ${error}`);
+      }
     } catch (err) {
-      console.error('Registration failed:', err);
+      console.error('Registration error:', err);
+      alert('An unexpected error occurred. Please try again.');
     }
   };
 
   return (
     <div className="semis-container">
       <h1>Student Registration System</h1>
+
+      {saveError && (
+        <NoticeBox error title="Registration Error">
+          {saveError}
+        </NoticeBox>
+      )}
+
+      {success && (
+        <NoticeBox success title="Success">
+          Student registered successfully!
+        </NoticeBox>
+      )}
       
       {!selectedSchool ? (
         <Card className="selection-card">

@@ -4,6 +4,12 @@
   max-width: 1200px;
   margin: 0 auto;
   font-family: 'Roboto', sans-serif;
+  position: relative;
+}
+
+/* Notification Boxes */
+.notice-box-container {
+  margin-bottom: 20px;
 }
 
 /* School Banner */
@@ -42,6 +48,7 @@
   background-color: white;
   color: #2c6693;
   border: 1px solid white;
+  transition: all 0.3s ease;
 }
 
 .change-school-button:hover {
@@ -57,6 +64,24 @@
   padding: 16px;
   border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  background-color: white;
+}
+
+/* Form Elements */
+.uniform-input {
+  width: 100%;
+  min-width: 300px;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: border-color 0.3s ease;
+}
+
+.uniform-input:focus {
+  border-color: #2c6693;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(44, 102, 147, 0.2);
 }
 
 /* School Selection */
@@ -70,14 +95,10 @@
   align-items: flex-end;
 }
 
-.uniform-input {
-  width: 100%;
-  min-width: 300px;
-}
-
 .dropdown-toggle {
   height: 36px;
   margin-bottom: 4px;
+  min-width: 40px;
 }
 
 .school-dropdown {
@@ -90,6 +111,7 @@
   border-radius: 4px;
   margin-top: 5px;
   z-index: 1000;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
 
 /* Location Fields */
@@ -114,16 +136,19 @@
   border-radius: 4px;
   margin-top: 5px;
   z-index: 1000;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
 
 .map-button {
   height: 36px;
   margin-bottom: 4px;
+  white-space: nowrap;
 }
 
 /* Coordinates Field */
 .coordinates-field {
   background-color: #f5f5f5;
+  cursor: not-allowed;
 }
 
 /* Map Modal */
@@ -136,6 +161,10 @@
 }
 
 /* Popup Styling */
+.leaflet-popup-content {
+  min-width: 200px;
+}
+
 .leaflet-popup-content strong {
   color: #2c6693;
   display: block;
@@ -146,11 +175,14 @@
 .submit-button {
   margin-top: 20px;
   background-color: #2c6693;
+  color: white;
+  padding: 10px 16px;
+  font-weight: 500;
+  transition: all 0.3s ease;
 }
 
-.submit-button:not(:disabled) {
-  background-color: #2c6693;
-  transition: background-color 0.3s ease;
+.submit-button:not(:disabled):hover {
+  background-color: #1e4b6e;
 }
 
 .submit-button:disabled {
@@ -172,23 +204,35 @@
 }
 
 select.uniform-input {
-  padding: 8px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 14px;
   height: 36px;
   background-color: white;
-}
-
-select.uniform-input:focus {
-  border-color: #2c6693;
-  outline: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23444444%22%20d%3D%22M6%208.5L1.5%204h9L6%208.5z%22%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
 }
 
 /* Required Field Indicator */
 .required-field::after {
   content: " *";
   color: #d32f2f;
+}
+
+/* Success/Error States */
+.success-notice {
+  margin-bottom: 20px;
+  animation: fadeIn 0.3s ease;
+}
+
+.error-notice {
+  margin-bottom: 20px;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* Responsive Design */
@@ -220,6 +264,10 @@ select.uniform-input:focus {
     width: 100%;
     margin-top: 10px;
   }
+
+  .semis-container {
+    padding: 15px;
+  }
 }
 
 /* Modal Overrides */
@@ -230,4 +278,31 @@ select.uniform-input:focus {
 .modal-actions {
   padding: 16px !important;
   border-top: 1px solid #e0e0e0 !important;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Loading States */
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+  border-radius: 4px;
+}
+
+/* Accessibility Improvements */
+[aria-busy="true"] {
+  cursor: progress;
+}
+
+[aria-disabled="true"] {
+  cursor: not-allowed;
 }
