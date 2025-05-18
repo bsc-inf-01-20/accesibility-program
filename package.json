@@ -8,12 +8,8 @@
     "start": "concurrently -n CLIENT,SERVER -c bgBlue.bold,bgGreen.bold \"yarn start:client\" \"yarn start:server\"",
     "start:client": "d2-app-scripts start --proxy https://project.ccdev.org/emis",
     "start:server": "nodemon server/server.js",
-    "server": "node server/server.js",
+    "server": "node server.js",
     "build": "d2-app-scripts build",
-<<<<<<< HEAD
-    "start": "d2-app-scripts start --proxy https://project.ccdev.org/emis/",
-=======
->>>>>>> 78307b5ea2238b595da57b2ed2412a72f868a6bc
     "test": "d2-app-scripts test",
     "lint": "eslint .",
     "format": "prettier --write ."
@@ -53,7 +49,7 @@
     "prop-types": "^15.8.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-leaflet": "4.2.1",
+    "react-leaflet": "^4.2.1",
     "react-map-gl": "7.1.0",
     "react-router-dom": "^6.22.1"
   }
