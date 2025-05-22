@@ -1,0 +1,28 @@
+.reports-container {
+  padding: 1rem; /* 24px */
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem; /* 24px */
+  /* background-color: rgb(220, 221, 240); */
+  border-radius: 10px;
+}
+
+.dashboard-title {
+  font-size: 2rem; /* text-2xl */
+  font-weight: 700;  /* bold */
+  color: rgb(26, 15, 176);
+  border-bottom: solid 2px rgb(82, 78, 144);
+  justify-items: center;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem; /* 24px */
+}
+
+@media (min-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(3, 1fr); /* lg:grid-cols-3 */
+  }
+}

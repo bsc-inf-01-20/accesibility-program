@@ -1,0 +1,106 @@
+.amenity-heading {
+  font-size: 1.125rem; /* text-lg */
+  font-weight: 600;    /* font-semibold */
+  margin-bottom: 1rem; /* mb-4 */
+}
+
+.amenity-table {
+  width: 100%;       /* w-full */
+  font-size: 0.875rem; /* text-sm */
+  border-collapse: collapse;
+}
+
+.table-row-header {
+  text-align: left;  /* text-left */
+  border-bottom: 1px solid #ccc; /* border-b */
+}
+
+.table-row-body {
+  border-bottom: 1px solid #eee; /* border-b */
+}
+
+.table-cell {
+  padding-top: 0.5rem;  /* py-2 top */
+  padding-bottom: 0.5rem; /* py-2 bottom */
+}
+
+/* distancechartcss */
+.distance-chart-card {
+  grid-column: span 2;
+  border: solid 1px #e5e7eb; /* border-gray-300 */
+  border-radius: 0.375rem;   /* rounded */
+  padding: 10px;
+}
+
+.distance-chart-title {
+  font-size: 1.125rem; /* text-lg */
+  font-weight: 600;    /* font-semibold */
+  margin-bottom: 1rem; /* mb-4 */
+}
+
+/* filter */
+
+.filters-heading {
+  font-size: 1.125rem; /* text-lg */
+  font-weight: 600;    /* font-semibold */
+  margin-bottom: 1rem; /* mb-4 */
+}
+
+.filters-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem; /* space-y-4 */
+}
+
+.filters-label {
+  display: block;         /* block */
+  font-size: 0.875rem;    /* text-sm */
+  font-weight: 500;       /* font-medium */
+  margin-bottom: 0.25rem; /* mb-1 */
+}
+
+.filters-select {
+  width: 100%;                /* w-full */
+  border: 1px solid #d1d5db;  /* border-gray-300 */
+  border-radius: 0.375rem;    /* rounded */
+  padding: 0.5rem;            /* p-2 */
+  font-size: 1rem;
+}
+.filters-select:focus {
+  outline: none;              /* focus:outline-none */
+  border-color: #3b82f6;      /* focus:border-blue-500 */
+  box-shadow: 0 0 0 1px #3b82f6; /* focus:ring-2 focus:ring-blue-500 */
+}
+
+/* summary section*/
+.summary-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, 1fr); /* sm:grid-cols-2 */
+  }
+}
+
+@media (min-width: 768px) {
+  .summary-grid {
+    grid-template-columns: repeat(4, 1fr); /* md:grid-cols-4 */
+  }
+}
+
+.summary-card {
+  text-align: center;
+}
+
+.summary-label {
+  font-size: 0.875rem;     /* text-sm */
+  color: #6b7280;          /* text-gray-500 */
+}
+
+.summary-value {
+  font-size: 1.125rem;     /* text-lg */
+  font-weight: 600;        /* font-semibold */
+}
