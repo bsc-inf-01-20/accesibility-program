@@ -1,25 +1,48 @@
 /* Main Container */
 .semis-container {
-  padding: 20px;
+  padding: 24px;
   max-width: 1200px;
   margin: 0 auto;
   font-family: 'Roboto', sans-serif;
   position: relative;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
 /* Notification Boxes */
 .notice-box-container {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
+}
+
+.success-notice {
+  margin-bottom: 24px;
+  animation: fadeIn 0.3s ease;
+  font-size: 15px;
+}
+
+.success-message {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.student-id {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 10px 0;
+  font-size: 15px;
 }
 
 /* School Banner */
 .school-banner {
   background-color: #2c6693;
   color: white;
-  padding: 16px;
-  border-radius: 4px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  padding: 18px;
+  border-radius: 6px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  font-size: 16px;
 }
 
 .school-banner-content {
@@ -31,7 +54,7 @@
 .school-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 16px;
 }
 
@@ -49,6 +72,9 @@
   color: #2c6693;
   border: 1px solid white;
   transition: all 0.3s ease;
+  padding: 8px 16px;
+  font-size: 14px;
+  border-radius: 4px;
 }
 
 .change-school-button:hover {
@@ -60,70 +86,78 @@
 .selection-card,
 .form-card,
 .location-card {
-  margin-bottom: 16px;
-  padding: 16px;
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+  padding: 20px;
+  border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
   background-color: white;
 }
 
 /* Form Elements */
+.uniform-field {
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.uniform-label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 500;
+  color: #333;
+  font-size: 15px;
+}
+
+.uniform-label.required::after {
+  content: " *";
+  color: #d32f2f;
+}
+
 .uniform-input {
   width: 100%;
-  min-width: 300px;
-  padding: 8px 12px;
+  padding: 12px 14px;
   border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 14px;
-  transition: border-color 0.3s ease;
+  border-radius: 6px;
+  font-size: 15px;
+  transition: all 0.3s ease;
 }
 
 .uniform-input:focus {
   border-color: #2c6693;
   outline: none;
-  box-shadow: 0 0 0 2px rgba(44, 102, 147, 0.2);
+  box-shadow: 0 0 0 3px rgba(44, 102, 147, 0.2);
 }
 
-/* School Selection */
-.school-selection-container {
+.uniform-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23444444%22%20d%3D%22M6%208.5L1.5%204h9L6%208.5z%22%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 12px;
+  height: 46px;
+}
+
+.uniform-error {
+  color: #d32f2f;
+  font-size: 13px;
+  margin-top: 6px;
+  display: block;
+}
+
+/* Residence Search Styles */
+.residence-field {
   position: relative;
 }
 
-.search-input-container {
-  display: flex;
-  gap: 10px;
-  align-items: flex-end;
+.search-container {
+  position: relative;
 }
 
-.dropdown-toggle {
-  height: 36px;
-  margin-bottom: 4px;
-  min-width: 40px;
-}
-
-.school-dropdown {
+.search-spinner {
   position: absolute;
-  width: 100%;
-  max-height: 300px;
-  overflow-y: auto;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  margin-top: 5px;
-  z-index: 1000;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
-
-/* Location Fields */
-.location-fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: 10px;
-  align-items: flex-end;
-}
-
-.residence-field-container {
-  position: relative;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
 }
 
 .search-results-dropdown {
@@ -133,84 +167,162 @@
   overflow-y: auto;
   background: white;
   border: 1px solid #ddd;
-  border-radius: 4px;
-  margin-top: 5px;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  margin-top: -1px;
   z-index: 1000;
   box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
 
-.map-button {
-  height: 36px;
-  margin-bottom: 4px;
-  white-space: nowrap;
+.search-results-dropdown .dhis2-ui-menu {
+  border: none;
+  box-shadow: none;
+  margin: 0;
+  padding: 0;
+}
+
+.search-results-dropdown .dhis2-ui-menu-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-radius: 0;
+  font-size: 14px;
+  border-bottom: 1px solid #eee;
+}
+
+.search-results-dropdown .dhis2-ui-menu-item:last-child {
+  border-bottom: none;
+}
+
+.search-results-dropdown .dhis2-ui-menu-item:hover {
+  background-color: #f5f5f5;
+}
+
+.search-results-dropdown .dhis2-ui-menu-item[disabled] {
+  color: #666;
+  cursor: default;
+  background-color: transparent;
+  font-style: italic;
+}
+
+/* Input focus with results */
+.uniform-input:focus {
+  position: relative;
+  z-index: 1001;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 /* Coordinates Field */
 .coordinates-field {
   background-color: #f5f5f5;
   cursor: not-allowed;
+  font-family: monospace;
+  font-size: 14px;
 }
 
-/* Map Modal */
-.map-modal-container {
-  height: 60vh;
+/* Map Button */
+.map-button {
   width: 100%;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-/* Popup Styling */
-.leaflet-popup-content {
-  min-width: 200px;
-}
-
-.leaflet-popup-content strong {
-  color: #2c6693;
-  display: block;
-  margin-bottom: 5px;
+  margin-top: 8px;
 }
 
 /* Submit Button */
 .submit-button {
-  margin-top: 20px;
+  margin: 24px auto 0;
   background-color: #2c6693;
   color: white;
-  padding: 10px 16px;
+  padding: 12px 28px;
   font-weight: 500;
+  font-size: 16px;
   transition: all 0.3s ease;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  display: block;
+  width: auto;
+  min-width: 200px;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
 
 .submit-button:not(:disabled):hover {
   background-color: #1e4b6e;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
 
 .submit-button:disabled {
-  background-color: #cccccc;
+  background-color: #aaaaaa;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.submit-button.active-button {
+  background-color: #2c6693;
+  cursor: pointer;
+}
+
+.submit-button.loading {
+  position: relative;
+  color: transparent;
+}
+
+.submit-button.loading::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 50%;
+  left: 50%;
+  margin: -8px 0 0 -8px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* School Selection */
+.school-selection-container {
+  position: relative;
+}
+
+.search-input-container {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.dropdown-toggle {
+  height: 46px;
+  margin-bottom: 4px;
+  min-width: 46px;
+  font-size: 14px;
+}
+
+.school-dropdown {
+  position: absolute;
+  width: 100%;
+  max-height: 300px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  margin-top: 6px;
+  z-index: 1000;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
 }
 
 /* Select Input Styling */
 .select-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-}
-
-.select-label {
-  font-size: 14px;
-  color: #494949;
-  font-weight: 500;
-}
-
-select.uniform-input {
-  height: 36px;
-  background-color: white;
-  appearance: none;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23444444%22%20d%3D%22M6%208.5L1.5%204h9L6%208.5z%22%2F%3E%3C%2Fsvg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 12px;
+  gap: 6px;
 }
 
 /* Required Field Indicator */
@@ -219,17 +331,7 @@ select.uniform-input {
   color: #d32f2f;
 }
 
-/* Success/Error States */
-.success-notice {
-  margin-bottom: 20px;
-  animation: fadeIn 0.3s ease;
-}
-
-.error-notice {
-  margin-bottom: 20px;
-  animation: fadeIn 0.3s ease;
-}
-
+/* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -237,10 +339,16 @@ select.uniform-input {
 
 /* Responsive Design */
 @media (max-width: 768px) {
+  .semis-container {
+    padding: 18px;
+    font-size: 15px;
+  }
+
   .search-input-container,
   .location-fields {
     grid-template-columns: 1fr;
     align-items: stretch;
+    gap: 10px;
   }
   
   .dropdown-toggle,
@@ -251,7 +359,7 @@ select.uniform-input {
   }
   
   .map-modal-container {
-    height: 50vh;
+    height: 70vh; /* Increased from 55vh */
   }
 
   .school-banner-content {
@@ -262,11 +370,47 @@ select.uniform-input {
 
   .change-school-button {
     width: 100%;
-    margin-top: 10px;
+    margin-top: 12px;
   }
 
-  .semis-container {
-    padding: 15px;
+  .form-card, 
+  .location-card,
+  .selection-card {
+    padding: 18px;
+  }
+
+  .submit-button {
+    padding: 12px 20px;
+    font-size: 15px;
+    min-width: 180px;
+  }
+
+  .search-results-dropdown {
+    position: relative;
+    margin-top: 4px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+
+  .uniform-input:focus {
+    border-radius: 4px;
+  }
+}
+
+@media (max-width: 480px) {
+  .uniform-input {
+    padding: 14px 16px;
+    font-size: 16px;
+  }
+  
+  .uniform-label {
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+  
+  .submit-button {
+    padding: 14px 24px;
+    font-size: 16px;
   }
 }
 
@@ -276,11 +420,11 @@ select.uniform-input {
 }
 
 .modal-actions {
-  padding: 16px !important;
+  padding: 18px !important;
   border-top: 1px solid #e0e0e0 !important;
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
 }
 
 /* Loading States */
@@ -290,19 +434,219 @@ select.uniform-input {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(255, 255, 255, 0.8);
+  background-color: rgba(255, 255, 255, 0.85);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1001;
+  border-radius: 6px;
+}
+
+/* Field Status Indicators */
+.has-error .uniform-input {
+  border-color: #d32f2f;
+}
+
+.is-valid .uniform-input {
+  border-color: #4caf50;
+}
+
+/* Character Count */
+.char-count {
+  font-size: 13px;
+  color: #666;
+  text-align: right;
+  margin-top: 6px;
+}
+
+.char-count.warning {
+  color: #ff9800;
+}
+
+.char-count.error {
+  color: #d32f2f;
+}
+
+/* ==================== */
+/* Enhanced Map Styling */
+/* ==================== */
+
+.map-modal-container {
+  height: 70vh; /* Increased from 65vh */
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.map-content-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* Popup Styling */
+.leaflet-popup-content {
+  min-width: 220px;
+  max-width: 300px;
+  font-size: 14px;
+  padding: 12px;
+}
+
+.leaflet-popup-content strong {
+  color: #2c6693;
+  display: block;
+  margin-bottom: 6px;
+  font-size: 15px;
+}
+
+/* Map Search Container */
+.map-search-container {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  width: 90%;
+  max-width: 600px;
+  background: white;
   border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  padding: 8px;
 }
 
-/* Accessibility Improvements */
-[aria-busy="true"] {
-  cursor: progress;
+.map-search-input {
+  width: 100%;
+  padding: 12px 15px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+  transition: all 0.3s ease;
 }
 
-[aria-disabled="true"] {
-  cursor: not-allowed;
+.map-search-input:focus {
+  border-color: #2c6693;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(44, 102, 147, 0.2);
+}
+
+/* Search Results Dropdown */
+.map-search-results {
+  position: absolute;
+  width: calc(100% - 16px);
+  max-height: 200px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #ddd;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  margin-top: 8px;
+  z-index: 1001;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.map-search-result-item {
+  padding: 12px 15px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 14px;
+  border-bottom: 1px solid #eee;
+}
+
+.map-search-result-item:hover {
+  background-color: #f5f5f5;
+}
+
+.map-search-result-item:last-child {
+  border-bottom: none;
+}
+
+/* School Marker Highlight */
+.school-marker {
+  z-index: 1000 !important;
+}
+
+/* Search Loading Indicator */
+.map-search-loading {
+  padding: 12px;
+  text-align: center;
+  color: #666;
+  font-size: 14px;
+}
+
+/* Marker Cluster Styles */
+.marker-cluster-small {
+  background-color: rgba(181, 226, 140, 0.6);
+}
+.marker-cluster-small div {
+  background-color: rgba(110, 204, 57, 0.6);
+}
+
+.marker-cluster-medium {
+  background-color: rgba(241, 211, 87, 0.6);
+}
+.marker-cluster-medium div {
+  background-color: rgba(240, 194, 12, 0.6);
+}
+
+.marker-cluster-large {
+  background-color: rgba(253, 156, 115, 0.6);
+}
+.marker-cluster-large div {
+  background-color: rgba(241, 128, 23, 0.6);
+}
+
+/* Leaflet Overrides */
+.leaflet-container {
+  font-family: 'Roboto', sans-serif;
+}
+
+.leaflet-control-attribution {
+  font-size: 11px;
+}
+
+/* Loading Indicator for Map */
+.map-loading-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 12px 24px;
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+
+/* Debounce Indicator */
+.search-debounce {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 1001;
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #666;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+
+/* Current Location Marker */
+.current-location-marker {
+  background-color: #2c6693;
+  border: 2px solid white;
+}
+
+/* Search Result Marker */
+.search-result-marker {
+  background-color: #ff9800;
+  border: 2px solid white;
 }
