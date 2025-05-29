@@ -5,11 +5,19 @@ const STUDENTS_QUERY = {
   students: {
     resource: "trackedEntityInstances",
     params: ({ orgUnitIds, program }) => ({
-      fields: "trackedEntityInstance,attributes[attribute,value],enrollments[orgUnit],geometry",
+      fields: [
+        "trackedEntityInstance",
+        "attributes[attribute,value]",
+        "enrollments[orgUnit]",
+        "geometry",
+        "created",
+        "lastUpdated"
+      ].join(","),
       ou: orgUnitIds.join(";"),
       program,
       pageSize: 10000,
-      paging: false
+      paging: false,
+      totalPages: true
     })
   }
 };
@@ -18,28 +26,48 @@ export const useFetchStudents = () => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [programId, setProgramId] = useState(null);
+  const [programId, setProgramId] = useState("rNqCDmQ05XZ"); // Default to your program ID
 
   const { 
     refetch: fetchStudentsQuery,
     loading: queryLoading,
-    error: queryError
+    error: queryError,
+    data: queryData
   } = useDataQuery(STUDENTS_QUERY, {
     lazy: true,
     onComplete: (data) => {
       const teis = data?.students?.trackedEntityInstances || [];
       const formattedStudents = teis.map(student => {
+        // Extract attributes into key-value pairs
         const attributes = student.attributes.reduce((acc, attr) => {
           acc[attr.attribute] = attr.value;
           return acc;
         }, {});
 
+        // Get coordinates from either geometry or coordinates attribute
+        let coordinates = null;
+        if (student.geometry) {
+          coordinates = student.geometry.coordinates || 
+                       (student.geometry.split(';').map(Number));
+        } else if (attributes['dSbsnHRkmOI']) { // coordinates attribute
+          coordinates = attributes['dSbsnHRkmOI'].split(',').map(Number);
+        }
+
         return {
           id: student.trackedEntityInstance,
-          displayName: attributes['name'] || 'Unknown Student',
+          firstName: attributes['gz8w04YBSS0'] || '', // firstName attribute
+          lastName: attributes['ZIDlK6BaAU2'] || '', // lastName attribute
+          displayName: `${attributes['gz8w04YBSS0'] || ''} ${attributes['ZIDlK6BaAU2'] || ''}`.trim() || 'Unknown Student',
+          gender: attributes['X0vzx18XWqu'], // gender attribute
+          birthDate: attributes['EPYqXuM0M2u'], // birthDate attribute
+          residence: attributes['nSwZkncLE3V'], // residence attribute
+          coordinates: coordinates,
           geometry: student.geometry,
           orgUnit: student.enrollments?.[0]?.orgUnit,
-          attributes
+          schoolId: student.enrollments?.[0]?.orgUnit, // Alias for orgUnit
+          attributes,
+          createdAt: student.created,
+          updatedAt: student.lastUpdated
         };
       });
       setStudents(formattedStudents);
@@ -52,11 +80,6 @@ export const useFetchStudents = () => {
   const fetchStudents = async (selectedSchools, program = programId) => {
     if (!selectedSchools || selectedSchools.length === 0) {
       setStudents([]);
-      return;
-    }
-
-    if (!program) {
-      setError("Program ID is required to fetch students");
       return;
     }
 
@@ -73,12 +96,27 @@ export const useFetchStudents = () => {
     }
   };
 
+  // Function to refresh a single student after update
+  const refreshStudent = (updatedStudent) => {
+    setStudents(prev => prev.map(student => 
+      student.id === updatedStudent.id ? updatedStudent : student
+    ));
+  };
+
+  // Function to add a newly created student
+  const addNewStudent = (newStudent) => {
+    setStudents(prev => [newStudent, ...prev]);
+  };
+
   return {
     students,
     loading: loading || queryLoading,
     error: error || queryError,
     fetchStudents,
     setProgramId,
-    programId
+    programId,
+    refreshStudent,
+    addNewStudent,
+    queryData // Raw query data for debugging
   };
 };

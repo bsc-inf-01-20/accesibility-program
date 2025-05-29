@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Navigation } from './components/Navigation/Navigation';
 import ClosestPlaceFinder from './pages/ClosestPlaceFinder';
 import SEMISRegistration from './pages/SEMISRegistration';
-import Reports from './pages/Reports';
+import StudentDistanceCalculator from './pages/StudentDistanceCalculator';
 import Settings from './pages/Settings';
 import styles from './App.module.css';
 
@@ -49,6 +49,7 @@ const App = () => {
               <Route path="/" element={<ClosestPlaceFinder />} />
               <Route path="/registration" element={<SEMISRegistration />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/StudentDistanceCalculator" element={<StudentDistanceCalculator />} />
             </Routes>
           </div>
         </main>

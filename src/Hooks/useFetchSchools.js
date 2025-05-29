@@ -58,25 +58,27 @@ export const useFetchSchools = () => {
   });
 
   const { 
-    refetch: fetchSchools,
-    loading: schoolsLoading,
-    error: schoolsError
-  } = useDataQuery(SCHOOLS_QUERY, {
-    lazy: true,
-    onComplete: (data) => {
-      const schools = data?.schools?.organisationUnits || [];
-      setFilteredSchools(schools);
-      // Auto-select all schools when they load
-      setSelectedSchools(schools.map(school => ({
-        id: school.id,
-        name: school.displayName,
-        geometry: school.geometry
-      })));
-    },
-    onError: (error) => {
-      setError(error.message || "Failed to load schools");
-    }
-  });
+  refetch: fetchSchools,
+  loading: schoolsLoading,
+  error: schoolsError
+} = useDataQuery(SCHOOLS_QUERY, {
+  lazy: true,
+  onComplete: (data) => {
+    const schools = data?.schools?.organisationUnits || [];
+    setFilteredSchools(schools);
+    // Auto-select all schools when they load, and extract coordinates
+    setSelectedSchools(schools.map(school => ({
+      id: school.id,
+      name: school.displayName,
+      geometry: school.geometry,
+      coordinates: school.geometry?.coordinates || null
+    })));
+  },
+  onError: (error) => {
+    setError(error.message || "Failed to load schools");
+  }
+});
+
 
   useEffect(() => {
     if (!selectedLevels[1]) {
@@ -147,8 +149,8 @@ export const useFetchSchools = () => {
       return [level, matched?.displayName || ""];
     })
   );
+  console.log("Selected schools with coordinates:", selectedSchools);
 
-  console.log("Selected Level Names:", selectedLevelNames);
 
   return {
     selectedLevels,

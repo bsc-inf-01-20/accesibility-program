@@ -12,17 +12,57 @@ import {
 import { useFetchSchools } from "../Hooks/useFetchSchools";
 import { useFetchStudents } from "../Hooks/useFetchStudents";
 import { useGoogleRouting } from "../Hooks/useGoogleRouting";
+import { useSaveResults } from "../Hooks/useSaveResults";
+import { SchoolSelector } from "../components/SchoolSelector/SchoolSelector";
+import { TravelModeSelector } from "../components/TravelModeSelector/TravelModeSelector";
 import { ProgressTracker } from "../components/ProgressTracker/ProgressTracker";
 import { ResultsTable } from "../components/ResultsTable/ResultsTable";
-import { SchoolSelector } from "../components/SchoolSelector/SchoolSelector";
-import { LeafletMapViewer } from "../components/MapViewer/LeafletMapViewer";
-import { TravelModeSelector } from "../components/TravelModeSelector/TravelModeSelector";
-import "./ClosestPlaceFinder.css";
+import "./StudentDistanceCalculator.css";
 
-const PROCESSING_BATCH_SIZE = 5; // Students per processing batch
+interface Result {
+  student: string;
+  studentId: string;
+  school: string;
+  schoolId: string;
+  distance: number;
+  time: number;
+  travelMode: string;
+  batchId: number;
+  rawData: any;
+  levelHierarchy: string[];
+}
+
+interface Student {
+  id: string;
+  displayName: string;
+  name: string;
+  coordinates?: [number, number]; // Optional tuple of numbers
+  [key: string]: any; // Allow other properties
+}
+
+interface School {
+  id: string;
+  name: string;
+  coordinates?: [number, number];
+  orgUnit?: string;
+  [key: string]: any;
+}
+
+type NoticeType =
+  | "schoolsError"
+  | "studentsError"
+  | "routingError"
+  | "invalidStudents"
+  | "noResultsStudents"
+  | "cancellationMessage"
+  | "completionMessage"
+  | "saveError"
+  | "saveSuccess";
+
+const PROCESSING_BATCH_SIZE = 5;
+const SAVING_BATCH_SIZE = 50;
 
 export const StudentDistanceCalculator = () => {
-  // School selection
   const {
     selectedLevels,
     selectedLevelNames,
@@ -35,7 +75,6 @@ export const StudentDistanceCalculator = () => {
     setSelectedSchools,
   } = useFetchSchools();
 
-  // Student data
   const {
     students,
     loading: studentsLoading,
@@ -43,90 +82,132 @@ export const StudentDistanceCalculator = () => {
     fetchStudents,
   } = useFetchStudents();
 
-  // Routing hook
   const {
-    calculateDistance,
+    findClosestPlace,
     loading: routingLoading,
     error: routingError,
   } = useGoogleRouting();
 
-  // State management
-  const [allResults, setAllResults] = useState([]);
-  const [selectedResult, setSelectedResult] = useState(null);
-  const [showRouteSelector, setShowRouteSelector] = useState(false);
-  const [invalidStudents, setInvalidStudents] = useState([]);
+  const {
+    saveBulk,
+    saving,
+    error: saveError,
+    progress: saveProgress,
+  } = useSaveResults();
+
+  const [allResults, setAllResults] = useState<Result[]>([]);
+  const [batchResults, setBatchResults] = useState<Result[]>([]);
+  const [selectedResult, setSelectedResult] = useState<Result | null>(null);
+  const [invalidStudents, setInvalidStudents] = useState<string[]>([]);
+  const [noResultsStudents, setNoResultsStudents] = useState<string[]>([]);
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [selectedTravelMode, setSelectedTravelMode] = useState("walking");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [cancellationMessage, setCancellationMessage] = useState(null);
+  const [cancellationMessage, setCancellationMessage] = useState<string | null>(
+    null
+  );
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const cancelRequested = useRef(false);
 
-  // Notice visibility control
   const [visibleNotices, setVisibleNotices] = useState({
     schoolsError: true,
     studentsError: true,
     routingError: true,
     invalidStudents: true,
+    noResultsStudents: true,
     cancellationMessage: true,
     completionMessage: true,
+    saveError: true,
+    saveSuccess: true,
   });
 
-  // Processing progress
   const [processingProgress, setProcessingProgress] = useState({
     processed: 0,
     total: 0,
     isComplete: false,
   });
 
-  // Clear notice handler
-  const clearNotice = (noticeType) => {
-    setVisibleNotices((prev) => ({
-      ...prev,
-      [noticeType]: false,
-    }));
+  const lastFetchedSchools = useRef<string | null>(null);
 
+  useEffect(() => {
+    if (selectedLevels[5] && selectedSchools.length > 0) {
+      const schoolsKey = selectedSchools.map((s: School) => s.id).join(",");
+      if (schoolsKey !== lastFetchedSchools.current) {
+        fetchStudents(selectedSchools);
+        lastFetchedSchools.current = schoolsKey;
+      }
+    }
+  }, [selectedSchools, selectedLevels, fetchStudents]);
+
+  const clearNotice = (noticeType: NoticeType) => {
+    setVisibleNotices((prev) => ({ ...prev, [noticeType]: false }));
+
+    // Use a type guard for the specific notice types that need additional clearing
     if (noticeType === "invalidStudents") {
       setInvalidStudents([]);
+    } else if (noticeType === "noResultsStudents") {
+      setNoResultsStudents([]);
     }
   };
 
-  // Check if processing was cancelled
   const checkCancelled = () => {
-    if (cancelRequested.current) {
-      throw new Error("Processing cancelled");
-    }
+    if (cancelRequested.current) throw new Error("Processing cancelled");
   };
 
-  // Process a single student-school pair
-  const processStudentDistance = async (student, school) => {
+  const calculateStudentDistance = async (
+    student: Student,
+    school: School
+  ): Promise<Result | null> => {
     checkCancelled();
 
     try {
-      const studentCoords = student?.geometry?.coordinates;
-      const schoolCoords = school?.geometry?.coordinates;
-
-      if (!studentCoords || !schoolCoords) {
+      if (!student.coordinates || !school.coordinates) {
+        console.warn("Invalid coordinates:", {
+          student: student.displayName,
+          studentCoords: student.coordinates,
+          school: school.name,
+          schoolCoords: school.coordinates,
+        });
+        setInvalidStudents((prev) => [...prev, student.displayName]);
         return null;
       }
 
-      const result = await calculateDistance(
-        studentCoords,
-        schoolCoords,
+      const place = await findClosestPlace(
+        {
+          name: student.name,
+          id: student.id,
+          geometry: {
+            coordinates: [student.coordinates[1], student.coordinates[0]],
+          },
+        },
+        [
+          {
+            id: school.id,
+            name: school.name,
+            location: {
+              lat: school.coordinates[1],
+              lng: school.coordinates[0],
+            },
+          },
+        ],
         selectedTravelMode
       );
+
       checkCancelled();
 
-      return result
-        ? {
-            ...result,
-            studentId: student.id,
-            studentName: student.displayName,
-            schoolId: school.id,
-            schoolName: school.displayName,
-            batchId: currentBatchIndex,
-            travelMode: selectedTravelMode,
-          }
-        : null;
+      if (!place) return null;
+
+      return {
+        ...place,
+        student: student.displayName,
+        studentId: student.id,
+        school: school.name,
+        schoolId: school.id,
+        batchId: currentBatchIndex,
+        rawData: { ...student, orgUnit: school.orgUnit || "UNKNOWN" },
+        levelHierarchy: selectedLevelNames,
+        travelMode: selectedTravelMode,
+      };
     } catch (err) {
       if (err.message !== "Processing cancelled") {
         console.error(`Error processing ${student.displayName}:`, err);
@@ -135,7 +216,6 @@ export const StudentDistanceCalculator = () => {
     }
   };
 
-  // Main processing function
   const handleCalculateDistances = async () => {
     if (isProcessing) {
       cancelRequested.current = true;
@@ -144,24 +224,34 @@ export const StudentDistanceCalculator = () => {
       return;
     }
 
-    if (schoolsLoading || studentsLoading || selectedSchools.length === 0) return;
+    if (
+      schoolsLoading ||
+      studentsLoading ||
+      !selectedLevels[5] ||
+      students.length === 0
+    )
+      return;
 
-    // Reset states
     cancelRequested.current = false;
     setIsProcessing(true);
     setCancellationMessage(null);
+    setNoResultsStudents([]);
     setInvalidStudents([]);
+    setSaveSuccess(false);
 
-    // Filter valid students
-    const validStudents = students.filter((student) => {
-      const coords = student?.geometry?.coordinates;
-      const isValid = coords?.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1]);
-      if (!isValid) setInvalidStudents((prev) => [...prev, student.displayName]);
+    const validStudents = students.filter((student: Student) => {
+      const coords = student.coordinates;
+      const isValid =
+        coords && coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1]);
+
+      if (!isValid && student.displayName) {
+        setInvalidStudents((prev) => [...prev, student.displayName]);
+      }
       return isValid;
     });
 
     setAllResults([]);
-    setSelectedResult(null);
+    setBatchResults([]);
     setCurrentBatchIndex(0);
     setProcessingProgress({
       processed: 0,
@@ -170,40 +260,28 @@ export const StudentDistanceCalculator = () => {
     });
 
     try {
-      // Process each student against each selected school
-      for (let i = 0; i < validStudents.length; i += PROCESSING_BATCH_SIZE) {
-        checkCancelled();
+      for (const school of selectedSchools) {
+        for (let i = 0; i < validStudents.length; i += PROCESSING_BATCH_SIZE) {
+          checkCancelled();
+          const batch = validStudents.slice(i, i + PROCESSING_BATCH_SIZE);
+          setCurrentBatchIndex(i);
 
-        const studentBatch = validStudents.slice(i, i + PROCESSING_BATCH_SIZE);
-        setCurrentBatchIndex(i);
+          const results = await Promise.all(
+            batch.map((student) => calculateStudentDistance(student, school))
+          );
+          checkCancelled();
 
-        const batchResults = [];
-        
-        for (const student of studentBatch) {
-          for (const school of selectedSchools) {
-            const result = await processStudentDistance(student, school);
-            if (result) {
-              batchResults.push(result);
-            }
-          }
+          const validResults = results.filter((r): r is Result => r !== null);
+          setBatchResults(validResults);
+          setAllResults((prev) => [...prev, ...validResults]);
+          setProcessingProgress((prev) => ({
+            ...prev,
+            processed: prev.processed + batch.length,
+            isComplete: i + batch.length >= validStudents.length,
+          }));
+
+          await new Promise((resolve) => setTimeout(resolve, 300));
         }
-
-        checkCancelled();
-
-        setAllResults((prev) => [...prev, ...batchResults]);
-        setProcessingProgress((prev) => ({
-          ...prev,
-          processed: i * selectedSchools.length + batchResults.length,
-          isComplete: i + studentBatch.length >= validStudents.length,
-        }));
-
-        await new Promise((resolve) => {
-          const timeout = setTimeout(resolve, 300);
-          if (cancelRequested.current) {
-            clearTimeout(timeout);
-            resolve();
-          }
-        });
       }
     } catch (err) {
       if (err.message !== "Processing cancelled") {
@@ -215,38 +293,25 @@ export const StudentDistanceCalculator = () => {
     }
   };
 
-  // Export to CSV
-  const handleExportCSV = () => {
-    const headers = [
-      "Student",
-      "School",
-      "Distance (km)",
-      "Time",
-      "Travel Mode",
-    ].join(",");
-    const rows = allResults
-      .map(
-        (r) =>
-          `"${r.studentName}","${r.schoolName}",${r.distance},"${r.time}","${r.travelMode}"`
-      )
-      .join("\n");
-    const csv = `${headers}\n${rows}`;
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `student_school_distances.csv`;
-    link.click();
+  const handleSave = async () => {
+    try {
+      const { failures } = await saveBulk(allResults, "student_distances");
+
+      if (failures.length > 0) {
+        setVisibleNotices((prev) => ({ ...prev, saveError: true }));
+      } else {
+        setSaveSuccess(true);
+        setVisibleNotices((prev) => ({
+          ...prev,
+          saveSuccess: true,
+          completionMessage: true,
+        }));
+      }
+    } catch (err) {
+      setVisibleNotices((prev) => ({ ...prev, saveError: true }));
+    }
   };
 
-  // Fetch students when schools are selected
-  useEffect(() => {
-    if (selectedSchools.length > 0) {
-      fetchStudents(selectedSchools);
-    }
-  }, [selectedSchools]);
-
-  // Cleanup effect
   useEffect(() => {
     return () => {
       cancelRequested.current = true;
@@ -257,37 +322,50 @@ export const StudentDistanceCalculator = () => {
   return (
     <div className="student-distance-calculator">
       <h1 className="app-header">Student Distance Calculator</h1>
-
       <div className="control-panel">
         <div className="selection-section">
           <SchoolSelector
             selectedLevels={selectedLevels}
             allUnits={allUnits}
             loading={schoolsLoading}
-            error={schoolsError}
+            error={schoolsError?.message || schoolsError}
             handleSelectLevel={handleSelectLevel}
             fetchOrgUnits={fetchOrgUnits}
             setSelectedSchools={setSelectedSchools}
           />
-
           {selectedSchools.length > 0 && (
             <div className="selection-count">
-              {selectedSchools.length} schools selected, {students.length} students loaded
+              {selectedSchools.length} schools selected
             </div>
           )}
+          {selectedLevels[5]
+            ? students.length > 0 && (
+                <div className="selection-count">
+                  {students.length} students found
+                </div>
+              )
+            : selectedSchools.length > 0 && (
+                <div className="selection-count notice">
+                  Select a school at level 5 to fetch students
+                </div>
+              )}
         </div>
 
         <TravelModeSelector
           selectedMode={selectedTravelMode}
           onChange={setSelectedTravelMode}
-          disabled={isProcessing}
         />
 
         <div className="action-section">
           <ButtonStrip>
-            <Button 
-              onClick={handleCalculateDistances} 
-              disabled={schoolsLoading || studentsLoading || selectedSchools.length === 0} 
+            <Button
+              onClick={handleCalculateDistances}
+              disabled={
+                schoolsLoading ||
+                studentsLoading ||
+                !selectedLevels[5] ||
+                students.length === 0
+              }
               primary
             >
               {isProcessing ? (
@@ -295,104 +373,79 @@ export const StudentDistanceCalculator = () => {
                   <CircularLoader small className="loading-icon" />
                   <span>Cancel Processing</span>
                 </span>
-              ) : schoolsLoading ? (
-                "Loading Schools..."
-              ) : studentsLoading ? (
-                "Loading Students..."
               ) : (
                 "Calculate Distances"
               )}
             </Button>
 
             <Button
-              onClick={() => setShowRouteSelector(true)}
+              onClick={handleSave}
               disabled={
-                !processingProgress.isComplete || allResults.length === 0
+                !processingProgress.isComplete ||
+                saving ||
+                allResults.length === 0
               }
               secondary
+              icon={saving ? <CircularLoader small /> : undefined}
             >
-              View Routes
-            </Button>
-
-            <Button
-              onClick={handleExportCSV}
-              disabled={
-                !processingProgress.isComplete || allResults.length === 0
-              }
-              secondary
-            >
-              Export to CSV
+              {saving
+                ? `Saving (${saveProgress.processed}/${saveProgress.total})`
+                : "Save Results"}
             </Button>
           </ButtonStrip>
 
           <div className="notice-container">
-            {/* Error Notices */}
             {schoolsError && visibleNotices.schoolsError && (
-              <NoticeBox
-                error
-                title="Error"
-                onClose={() => clearNotice("schoolsError")}
-              >
-                {schoolsError}
+              <NoticeBox error title="Error">
+                {String(schoolsError)}
               </NoticeBox>
             )}
 
             {studentsError && visibleNotices.studentsError && (
-              <NoticeBox
-                error
-                title="Error"
-                onClose={() => clearNotice("studentsError")}
-              >
-                {studentsError}
+              <NoticeBox error title="Error">
+                {String(studentsError)}
               </NoticeBox>
             )}
 
             {routingError && visibleNotices.routingError && (
-              <NoticeBox
-                error
-                title="Error"
-                onClose={() => clearNotice("routingError")}
-              >
-                {routingError}
+              <NoticeBox error title="Error">
+                {String(routingError)}
               </NoticeBox>
             )}
 
-            {/* Warning Notices */}
             {invalidStudents.length > 0 && visibleNotices.invalidStudents && (
-              <NoticeBox
-                warning
-                title="Notice"
-                onClose={() => clearNotice("invalidStudents")}
-              >
-                {invalidStudents.length} students skipped due to invalid coordinates
+              <NoticeBox warning title="Notice">
+                {invalidStudents.length} students had invalid coordinates and
+                were skipped.
               </NoticeBox>
             )}
 
             {cancellationMessage && visibleNotices.cancellationMessage && (
-              <NoticeBox
-                warning
-                title="Notice"
-                onClose={() => clearNotice("cancellationMessage")}
-              >
+              <NoticeBox warning title="Processing Cancelled">
                 {cancellationMessage}
               </NoticeBox>
             )}
 
-            {/* Success Notices */}
             {processingProgress.isComplete &&
               visibleNotices.completionMessage && (
-                <NoticeBox
-                  success
-                  title="Processing Complete"
-                  onClose={() => clearNotice("completionMessage")}
-                >
-                  Calculated distances for {processingProgress.processed} student-school pairs
+                <NoticeBox title="Processing Complete">
+                  Processed {processingProgress.processed} students, found{" "}
+                  {allResults.length} results
                 </NoticeBox>
               )}
+
+            {saveError && visibleNotices.saveError && (
+              <NoticeBox error title="Save Error">
+                {String(saveError)}
+              </NoticeBox>
+            )}
+
+            {saveSuccess && visibleNotices.saveSuccess && (
+              <NoticeBox title="Success">Results saved successfully!</NoticeBox>
+            )}
           </div>
         </div>
 
-        {/* Progress Tracking */}
         {processingProgress.total > 0 && (
           <div
             className={`progress-section ${isProcessing ? "is-processing" : ""}`}
@@ -404,11 +457,6 @@ export const StudentDistanceCalculator = () => {
                   Processed: {processingProgress.processed}/
                   {processingProgress.total}
                 </div>
-                <div className="batch-progress">
-                  Batch{" "}
-                  {Math.floor(currentBatchIndex / PROCESSING_BATCH_SIZE) + 1}/
-                  {Math.ceil(students.length / PROCESSING_BATCH_SIZE)}
-                </div>
               </div>
             </div>
             <ProgressTracker
@@ -418,58 +466,18 @@ export const StudentDistanceCalculator = () => {
           </div>
         )}
       </div>
-
-      {/* Route Selection Modal */}
-      {showRouteSelector && allResults.length > 0 && (
-        <Modal open onClose={() => setShowRouteSelector(false)} large>
-          <ModalTitle>Select a Route to View</ModalTitle>
-          <ModalContent>
-            <div className="route-selector-container">
-              {allResults.map((result, index) => (
-                <div
-                  key={`${result.studentId}-${result.schoolId}-${index}`}
-                  className="route-option"
-                  onClick={() => {
-                    setSelectedResult(result);
-                    setShowRouteSelector(false);
-                  }}
-                >
-                  <strong>{result.studentName}</strong> to{" "}
-                  <strong>{result.schoolName}</strong>
-                  <div className="route-meta">
-                    <span>Distance: {result.distance} km</span>
-                    <span>Time: {result.time}</span>
-                    <span>Mode: {result.travelMode}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </ModalContent>
-          <ModalActions>
-            <Button onClick={() => setShowRouteSelector(false)}>Cancel</Button>
-          </ModalActions>
-        </Modal>
-      )}
-
-      {/* Map Viewer */}
-      {selectedResult && (
-        <>
-          <div
-            className={`map-overlay ${selectedResult ? "active" : ""}`}
-            onClick={() => setSelectedResult(null)}
-          />
-          <LeafletMapViewer
-            result={selectedResult}
-            onClose={() => setSelectedResult(null)}
-          />
-        </>
-      )}
-
-      {/* Results Table */}
       <ResultsTable
-        results={allResults}
+        places={allResults.map((result) => ({
+          id: result.studentId,
+          school: result.student,
+          place: result.school,
+          distance: result.distance,
+          time: result.time,
+          travelMode: result.travelMode,
+          rawData: result.rawData,
+        }))}
         loading={isProcessing}
-        type="student-school"
+        selectedAmenity={{ label: "School" }}
       />
     </div>
   );
