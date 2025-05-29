@@ -6,6 +6,7 @@ import { StudentForm } from '../components/SEMIS/StudentForm';
 import { LocationMapModal } from '../components/SEMIS/LocationMapModal';
 import { useFetchSchools } from '../Hooks/useFetchSchools';
 import { useSaveStudent } from '../Hooks/useSaveStudent';
+import { useSaveTeacher } from '../Hooks/useSaveTeacher';
 import './SEMISRegistration.css';
 
 const usePersistedSchool = () => {
@@ -38,6 +39,7 @@ const usePersistedSchool = () => {
 const SEMISRegistration = () => {
   const { selectedSchools = [], loading, error: fetchError } = useFetchSchools();
   const [selectedSchool, setSelectedSchool] = usePersistedSchool();
+  const [selectedRole, setSelectedRole] = useState(null);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -45,7 +47,9 @@ const SEMISRegistration = () => {
     birthDate: '',
     residence: '',
     coordinates: null,
-    coordinatesText: ''
+    coordinatesText: '',
+    teacherId: '',
+    specialization: ''
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedTerm, setDebouncedTerm] = useState('');
@@ -56,27 +60,15 @@ const SEMISRegistration = () => {
   const [submitError, setSubmitError] = useState(null);
   const [dateError, setDateError] = useState(null);
   const [isFormValid, setIsFormValid] = useState(false);
-  const [createdStudentId, setCreatedStudentId] = useState(null);
+  const [createdEntityId, setCreatedEntityId] = useState(null);
   
-  const { 
-    saveStudent, 
-    saving, 
-    error: saveError, 
-    success, 
-    reset, 
-    createdStudentId: serverStudentId 
-  } = useSaveStudent();
+  const { saveStudent, saving: savingStudent, error: studentError, success: studentSuccess, reset: resetStudent } = useSaveStudent();
+  const { saveTeacher, saving: savingTeacher, error: teacherError, success: teacherSuccess, reset: resetTeacher } = useSaveTeacher();
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedTerm(searchTerm), 300);
     return () => clearTimeout(timer);
   }, [searchTerm]);
-
-  useEffect(() => {
-    if (serverStudentId) {
-      setCreatedStudentId(serverStudentId);
-    }
-  }, [serverStudentId]);
 
   const displaySchools = useMemo(() => (
     selectedSchools.filter(school => 
@@ -91,6 +83,10 @@ const SEMISRegistration = () => {
     const residenceValid = formData.residence?.trim()?.length >= 5;
     const coordinatesValid = !!formData.coordinates;
     const schoolValid = !!selectedSchool?.id;
+    const roleValid = !!selectedRole;
+
+    const teacherIdValid = selectedRole !== 'teacher' || formData.teacherId?.trim()?.length >= 3;
+    const specializationValid = selectedRole !== 'teacher' || formData.specialization?.trim()?.length >= 3;
 
     let dateValidation = { isValid: false, error: 'Date of birth is required' };
     if (formData.birthDate) {
@@ -111,16 +107,19 @@ const SEMISRegistration = () => {
     }
 
     return {
-      isValid: firstNameValid &&
+      isValid: roleValid &&
+              firstNameValid &&
               lastNameValid &&
               genderValid &&
               dateValidation.isValid &&
               residenceValid &&
               coordinatesValid &&
-              schoolValid,
+              schoolValid &&
+              teacherIdValid &&
+              specializationValid,
       dateError: dateValidation.error
     };
-  }, [formData, selectedSchool]);
+  }, [formData, selectedSchool, selectedRole]);
 
   useEffect(() => {
     const validation = validateForm();
@@ -168,8 +167,12 @@ const SEMISRegistration = () => {
   };
 
   const handleDismissSuccess = () => {
-    reset?.();
-    setCreatedStudentId(null);
+    if (selectedRole === 'student') {
+      resetStudent?.();
+    } else {
+      resetTeacher?.();
+    }
+    setCreatedEntityId(null);
     setSubmitError(null);
   };
 
@@ -182,24 +185,37 @@ const SEMISRegistration = () => {
       return;
     }
 
-    const result = await saveStudent({ 
+    const payload = { 
       ...formData,
       schoolId: selectedSchool.id,
       coordinatesText: formData.coordinates?.join(',')
-    });
+    };
 
-    if (!result.success) {
-      setSubmitError(result.error);
+    let result;
+    if (selectedRole === 'student') {
+      result = await saveStudent(payload);
+    } else {
+      result = await saveTeacher(payload);
+    }
+
+    if (result?.success) {
+      setCreatedEntityId(result.teiId);
+    } else {
+      setSubmitError(result?.error || 'Registration failed');
     }
   };
 
+  const success = studentSuccess || teacherSuccess;
+  const saving = savingStudent || savingTeacher;
+  const error = studentError || teacherError || submitError;
+
   return (
     <div className="semis-container">
-      <h1>Student Registration System</h1>
+      <h1>School Registration System</h1>
 
-      {(submitError || saveError) && (
+      {(error) && (
         <NoticeBox error title="Registration Error">
-          {submitError || saveError}
+          {error}
         </NoticeBox>
       )}
 
@@ -210,10 +226,10 @@ const SEMISRegistration = () => {
           onHidden={handleDismissSuccess}
         >
           <div className="success-message">
-            <p>Student registered successfully!</p>
-            {createdStudentId && (
+            <p>{selectedRole === 'student' ? 'Student' : 'Teacher'} registered successfully!</p>
+            {createdEntityId && (
               <div className="student-id">
-                <strong>Student ID:</strong> {createdStudentId}
+                <strong>{selectedRole === 'student' ? 'Student' : 'Teacher'} ID:</strong> {createdEntityId}
               </div>
             )}
             <Button small onClick={handleDismissSuccess}>
@@ -234,16 +250,68 @@ const SEMISRegistration = () => {
           onDropdownToggle={setIsDropdownOpen}
           onSelectSchool={handleSchoolSelect}
         />
+      ) : !selectedRole ? (
+        <div className="role-selection-container">
+          <h2 className="role-selection-title">Register New</h2>
+          <div className="role-options">
+            <div 
+              className={`role-card ${selectedRole === 'student' ? 'selected' : ''}`}
+              onClick={() => setSelectedRole('student')}
+            >
+              <div className="role-icon">👨‍🎓</div>
+              <h3 className="role-name">Student</h3>
+              <p className="role-description">
+                Register a new student with personal details, contact information and enrollment data
+              </p>
+            </div>
+            <div 
+              className={`role-card ${selectedRole === 'teacher' ? 'selected' : ''}`}
+              onClick={() => setSelectedRole('teacher')}
+            >
+              <div className="role-icon">👩‍🏫</div>
+              <h3 className="role-name">Teacher</h3>
+              <p className="role-description">
+                Register a new teacher with professional details, qualifications and assignment information
+              </p>
+            </div>
+          </div>
+          <div className="back-to-school">
+            <Button onClick={() => setSelectedSchool(null)}>
+              Back to School Selection
+            </Button>
+          </div>
+        </div>
       ) : (
         <>
           <SchoolBanner 
             school={selectedSchool}
             onResetSchool={() => {
               setSelectedSchool(null);
+              setSelectedRole(null);
               setSearchTerm('');
             }}
           />
           
+          <div className="role-indicator">
+            Registering: <strong>{selectedRole === 'student' ? 'Student' : 'Teacher'}</strong>
+            <Button small onClick={() => {
+              setSelectedRole(null);
+              setFormData({
+                firstName: '',
+                lastName: '',
+                gender: '',
+                birthDate: '',
+                residence: '',
+                coordinates: null,
+                coordinatesText: '',
+                teacherId: '',
+                specialization: ''
+              });
+            }}>
+              Change
+            </Button>
+          </div>
+
           <StudentForm
             formData={formData}
             onInputChange={handleInputChange}
@@ -253,6 +321,7 @@ const SEMISRegistration = () => {
             onMapButtonClick={handleMapButtonClick}
             isValid={isFormValid}
             dateError={dateError}
+            isTeacher={selectedRole === 'teacher'}
           />
         </>
       )}

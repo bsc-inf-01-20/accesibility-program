@@ -8,7 +8,9 @@ export const StudentForm = ({
   saving,
   success,
   onMapButtonClick,
-  isValid
+  isValid,
+  dateError,
+  isTeacher
 }) => {
   return (
     <form onSubmit={onSubmit} className="registration-form">
@@ -44,6 +46,42 @@ export const StudentForm = ({
         </div>
       </Card>
 
+      {isTeacher && (
+        <>
+          <Card className="form-card">
+            <div className="uniform-field">
+              <label className="uniform-label required">Teacher ID</label>
+              <input
+                type="text"
+                className="uniform-input"
+                value={formData.teacherId}
+                onChange={(e) => onInputChange('teacherId', e.target.value)}
+                required
+              />
+              {formData.teacherId && formData.teacherId.trim().length < 3 && (
+                <Help error>Teacher ID must be at least 3 characters</Help>
+              )}
+            </div>
+          </Card>
+
+          <Card className="form-card">
+            <div className="uniform-field">
+              <label className="uniform-label required">Subject Specialization</label>
+              <input
+                type="text"
+                className="uniform-input"
+                value={formData.specialization}
+                onChange={(e) => onInputChange('specialization', e.target.value)}
+                required
+              />
+              {formData.specialization && formData.specialization.trim().length < 3 && (
+                <Help error>Specialization must be at least 3 characters</Help>
+              )}
+            </div>
+          </Card>
+        </>
+      )}
+
       <Card className="form-card">
         <div className="uniform-field">
           <label className="uniform-label required">Gender</label>
@@ -72,21 +110,8 @@ export const StudentForm = ({
             required
             max={new Date().toISOString().split('T')[0]}
           />
-          {formData.birthDate && (
-            <Help>
-              {(() => {
-                const today = new Date();
-                const birthDate = new Date(formData.birthDate);
-                const ageInYears = (today - birthDate) / (1000 * 60 * 60 * 24 * 365);
-                
-                if (birthDate > today) {
-                  return 'Birth date cannot be in the future';
-                } else if (ageInYears < 4) {
-                  return 'Student must be at least 4 years old';
-                }
-                return 'Valid birth date';
-              })()}
-            </Help>
+          {dateError && (
+            <Help error>{dateError}</Help>
           )}
         </div>
       </Card>
@@ -138,7 +163,7 @@ export const StudentForm = ({
           opacity: isValid ? 1 : 0.7
         }}
       >
-        {saving ? 'Registering...' : 'Register Student'}
+        {saving ? 'Registering...' : `Register ${isTeacher ? 'Teacher' : 'Student'}`}
       </Button>
     </form>
   );
