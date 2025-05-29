@@ -37,6 +37,7 @@
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.1.0",
     "https": "^1.0.0",
+    "idb": "^8.0.3",
     "leaflet": "^1.9.4",
     "leaflet.markercluster": "^1.5.3",
     "mapbox-gl": "2.15.0",

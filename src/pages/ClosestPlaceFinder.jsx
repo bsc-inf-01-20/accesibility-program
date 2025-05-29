@@ -172,6 +172,7 @@ export const ClosestPlaceFinder = () => {
     }
 
     if (schoolsLoading) return;
+    if (schoolsLoading) return;
 
     // Reset states
     cancelRequested.current = false;
@@ -179,6 +180,7 @@ export const ClosestPlaceFinder = () => {
     setCancellationMessage(null);
     setNoResultsSchools([]);
     setInvalidSchools([]);
+    setSaveSuccess(false);
     setSaveSuccess(false);
 
     // Filter valid schools
@@ -221,13 +223,7 @@ export const ClosestPlaceFinder = () => {
           isComplete: i + batch.length >= validSchools.length,
         }));
 
-        await new Promise((resolve) => {
-          const timeout = setTimeout(resolve, 300);
-          if (cancelRequested.current) {
-            clearTimeout(timeout);
-            resolve();
-          }
-        });
+        await new Promise((resolve) => setTimeout(resolve, 300));
       }
     } catch (err) {
       if (err.message !== "Processing cancelled") {
@@ -284,6 +280,12 @@ export const ClosestPlaceFinder = () => {
     link.download = `${selectedAmenity.label}_results.csv`;
     link.click();
   };
+
+  const [progress, setProgress] = useState({
+    processed: 0,
+    total: 0,
+    isComplete: false,
+  });
 
   // Cleanup effect
   useEffect(() => {
@@ -474,6 +476,26 @@ export const ClosestPlaceFinder = () => {
                 onClose={() => clearNotice("saveSuccess")}
               >
                 Successfully saved {allResults.length} results
+              </NoticeBox>
+            )}
+            {saveSuccess && visibleNotices.saveSuccess && (
+              <NoticeBox
+                success
+                title="Success"
+                onClose={() => clearNotice("saveSuccess")}
+                showCloseButton
+              >
+                Results saved successfully!
+              </NoticeBox>
+            )}
+            {saveError && visibleNotices.saveError && (
+              <NoticeBox
+                error
+                title="Error"
+                onClose={() => clearNotice("saveError")}
+                showCloseButton
+              >
+                {saveError}
               </NoticeBox>
             )}
           </div>
