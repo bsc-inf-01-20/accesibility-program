@@ -7,6 +7,7 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import styles from './App.module.css';
 
+
 const App = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
