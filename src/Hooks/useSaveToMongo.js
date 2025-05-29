@@ -1,127 +1,159 @@
-import { useState } from 'react';
-import axios from 'axios';
+import { useState } from "react";
+import axios from "axios";
 
 export const useSaveToMongo = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const [progress, setProgress] = useState({ processed: 0, total: 0 });
+  const [progress, setProgress] = useState({
+    processed: 0,
+    total: 0,
+    lastSaved: null,
+  });
 
-  const transformForMongo = (result) => {
-    // Validate required fields
-    const requiredFields = {
-      schoolId: result.schoolId,
-      placeId: result.placeId,  // Changed from place to placeId
-      distance: result.distance
-    };
+  // Transform results for MongoDB with filter-ready hierarchy
+ const prepareDocument = (result) => {
+  // Required field validation
+  if (!result.schoolId) throw new Error("Missing schoolId");
+  if (!result.placeId) throw new Error("Missing placeId");
+  if (typeof result.distance !== "number") throw new Error("Invalid distance");
 
-    for (const [field, value] of Object.entries(requiredFields)) {
-      if (!value) throw new Error(`Missing required field: ${field}`);
-      if (field === 'distance' && typeof value !== 'number') {
-        throw new Error('Distance must be a number');
-      }
-    }
-
-    // Convert coordinates to proper format
-    const schoolCoords = Array.isArray(result.schoolCoords)
-      ? { lat: result.schoolCoords[1], lng: result.schoolCoords[0] }
-      : result.schoolCoords || { lat: 0, lng: 0 };
-
-    return {
-      schoolId: result.schoolId,
-      schoolName: result.school || `School ${result.schoolId.slice(0, 5)}...`,
-      placeId: result.placeId,  // Using placeId instead of place
-      place: result.place || 'Unknown Place',  // Keep as secondary field if needed
-      travelMode: result.travelMode || 'walking',
-      amenityType: result.amenityType || 'unknown',
-      distance: result.distance,
-      duration: result.duration || 0,
-      schoolCoords,
-      placeCoords: result.location 
-        ? { lat: result.location.lat, lng: result.location.lng }
-        : { lat: 0, lng: 0 },
-      location: result.location || { lat: 0, lng: 0 },
-      overviewPolyline: result.overviewPolyline || '',
-      createdAt: new Date()
-    };
+  // Extract hierarchy names
+  const hierarchy = {
+    division: result.levelHierarchy?.[2] || "Unknown Division",
+    district: result.levelHierarchy?.[3] || "Unknown District",
+    zone: result.levelHierarchy?.[4] || "Unknown Zone",
   };
 
+  // Prepare coordinates - match backend structure
+  const schoolCoords = Array.isArray(result.schoolCoords)
+    ? { lat: result.schoolCoords[1], lng: result.schoolCoords[0] }
+    : result.schoolCoords || { lat: 0, lng: 0 };
+
+  return {
+    // Core identification
+    schoolId: result.schoolId,
+    schoolName: result.school,
+    place: result.place || "Unknown Place", // Changed from placeName to place
+    placeId: result.placeId,
+
+    // Metrics
+    distance: parseFloat(result.distance.toFixed(3)),
+    duration: result.duration || 0,
+    travelMode: result.travelMode || "walking",
+    amenityType: result.amenityType || "unknown",
+
+    // Geo data - match backend field names
+    schoolCoords: schoolCoords, // Directly in root (not in locations)
+    location: result.location || { lat: 0, lng: 0 }, // For amenity location
+    overviewPolyline: result.overviewPolyline || "", // Not polyline
+
+    // Hierarchy filters
+    division: hierarchy.division,
+    district: hierarchy.district,
+    zone: hierarchy.zone,
+
+    // Timestamps
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+};
+
   const saveBulk = async (results) => {
+    if (!results || !Array.isArray(results) || results.length === 0) {
+      setError("No results provided for saving");
+      return { success: false, error: "No results provided" };
+    }
+
     setSaving(true);
     setError(null);
-    setProgress({ processed: 0, total: results.length });
+    setProgress({ processed: 0, total: results.length, lastSaved: null });
 
     try {
-      // Transform and validate
-      const transformed = results.map(result => {
-        try {
-          return transformForMongo(result);
-        } catch (error) {
-          console.error('Invalid route:', { error, result });
-          return null;
-        }
-      }).filter(Boolean);
+      // Process in batches of 50 for better performance
+      const BATCH_SIZE = 50;
+      const successfulSaves = [];
+      const failedSaves = [];
 
-      if (transformed.length === 0) {
-        throw new Error('No valid routes to save - check required fields');
-      }
+      for (let i = 0; i < results.length; i += BATCH_SIZE) {
+        const batch = results.slice(i, i + BATCH_SIZE);
 
-      // Process in chunks
-      const chunkSize = 20;
-      const savedRoutes = [];
+        const documents = batch
+          .map((result) => {
+            try {
+              return prepareDocument(result);
+            } catch (error) {
+              console.error(
+                "Document preparation failed:",
+                error.message,
+                result
+              );
+              failedSaves.push({
+                schoolId: result.schoolId,
+                error: error.message,
+                rawData: result,
+              });
+              return null;
+            }
+          })
+          .filter(Boolean);
 
-      for (let i = 0; i < transformed.length; i += chunkSize) {
-        const chunk = transformed.slice(i, i + chunkSize);
-        console.log('Sending chunk:', chunk);
+        if (documents.length > 0) {
+          console.log("Sending batch to MongoDB:", documents); 
+          try {
+            const response = await axios.post(
+              "https://server-nu-peach.vercel.app/api/routes/bulk",
+              documents,
+              {
+                headers: { "Content-Type": "application/json" },
+                timeout: 30000,
+              }
+            );
 
-        const response = await axios.post(
-          'https://server-nu-peach.vercel.app/api/routes/bulk',
-          chunk,
-          {
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            timeout: 30000
+            successfulSaves.push(...(response.data?.insertedIds || []));
+            setProgress((prev) => ({
+              ...prev,
+              processed: i + documents.length,
+              lastSaved: new Date().toISOString(),
+            }));
+          } catch (error) {
+            failedSaves.push(
+              ...documents.map((doc) => ({
+                schoolId: doc.schoolId,
+                error: error.response?.data?.message || error.message,
+              }))
+            );
           }
-        );
-
-        // Handle response
-        if (response.data?.routes) {
-          savedRoutes.push(...response.data.routes);
-        } else if (Array.isArray(response.data)) {
-          savedRoutes.push(...response.data);
-        } else if (response.data) {
-          savedRoutes.push(response.data);
         }
-
-        setProgress({ processed: i + chunk.length, total: transformed.length });
       }
 
       return {
-        success: true,
-        savedCount: savedRoutes.length,
-        savedRoutes
+        success: failedSaves.length === 0,
+        savedCount: successfulSaves.length,
+        failedCount: failedSaves.length,
+        failedSaves,
+        lastBatchSaved: progress.lastSaved,
       };
     } catch (error) {
-      const errorMsg = error.response?.data?.message || 
-                     error.message || 
-                     'Failed to save routes';
-      
+      const errorMsg = error.response?.data?.message || error.message;
       setError(errorMsg);
       return {
         success: false,
         error: errorMsg,
-        failures: error.response?.data?.failures || []
       };
     } finally {
       setSaving(false);
     }
   };
 
-  return { 
-    saveBulk, 
-    saving, 
-    error, 
+  return {
+    saveBulk,
+    saving,
+    error,
     progress,
-    resetError: () => setError(null) 
+    resetState: () => {
+      setSaving(false);
+      setError(null);
+      setProgress({ processed: 0, total: 0, lastSaved: null });
+    },
   };
 };

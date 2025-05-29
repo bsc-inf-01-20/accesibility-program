@@ -140,8 +140,19 @@ export const useFetchSchools = () => {
     }
   }, [selectedLevels, fetchOrgUnits]);
 
+  // ✅ Add selectedLevelNames here
+  const selectedLevelNames = Object.fromEntries(
+    Object.entries(selectedLevels).map(([level, id]) => {
+      const matched = allUnits.find(u => u.id === id);
+      return [level, matched?.displayName || ""];
+    })
+  );
+
+  console.log("Selected Level Names:", selectedLevelNames);
+
   return {
     selectedLevels,
+    selectedLevelNames,
     allUnits,
     selectedSchools,
     filteredSchools,

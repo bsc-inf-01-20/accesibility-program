@@ -338,6 +338,7 @@ export const useSaveResults = () => {
 
     try {
       // Start MongoDB save (non-blocking)
+      console.log("THIS ISSSSSSS" ,results);
       const mongoPromise = saveToMongo(results)
         .then(({ success }) => {
           log(`MongoDB save ${success ? "succeeded" : "failed"}`);

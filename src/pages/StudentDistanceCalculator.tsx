@@ -10,11 +10,8 @@ import {
   CircularLoader,
 } from "@dhis2/ui";
 import { useFetchSchools } from "../Hooks/useFetchSchools";
-import { useGooglePlacesApi } from "../Hooks/useGooglePlacesApi";
+import { useFetchStudents } from "../Hooks/useFetchStudents";
 import { useGoogleRouting } from "../Hooks/useGoogleRouting";
-import { useSaveResults } from "../Hooks/useSaveResults";
-import { AMENITY_TYPES } from "../utils/constants";
-import { AmenitySelector } from "../components/AmenitySelector/AmenitySelector";
 import { ProgressTracker } from "../components/ProgressTracker/ProgressTracker";
 import { ResultsTable } from "../components/ResultsTable/ResultsTable";
 import { SchoolSelector } from "../components/SchoolSelector/SchoolSelector";
@@ -22,10 +19,9 @@ import { LeafletMapViewer } from "../components/MapViewer/LeafletMapViewer";
 import { TravelModeSelector } from "../components/TravelModeSelector/TravelModeSelector";
 import "./ClosestPlaceFinder.css";
 
-const PROCESSING_BATCH_SIZE = 5; // Schools per processing batch
-const SAVING_BATCH_SIZE = 50; // Events per save batch
+const PROCESSING_BATCH_SIZE = 5; // Students per processing batch
 
-export const ClosestPlaceFinder = () => {
+export const StudentDistanceCalculator = () => {
   // School selection
   const {
     selectedLevels,
@@ -39,53 +35,40 @@ export const ClosestPlaceFinder = () => {
     setSelectedSchools,
   } = useFetchSchools();
 
-  // Data processing hooks
+  // Student data
   const {
-    processSchool,
-    loading: placesLoading,
-    error: placesError,
-  } = useGooglePlacesApi();
+    students,
+    loading: studentsLoading,
+    error: studentsError,
+    fetchStudents,
+  } = useFetchStudents();
 
+  // Routing hook
   const {
-    findClosestPlace,
+    calculateDistance,
     loading: routingLoading,
     error: routingError,
   } = useGoogleRouting();
 
-  // Save results hook (updated for bulk saving)
-  const {
-    saveBulk,
-    saving,
-    error: saveError,
-    progress: saveProgress,
-  } = useSaveResults();
-
   // State management
   const [allResults, setAllResults] = useState([]);
-  const [batchResults, setBatchResults] = useState([]);
   const [selectedResult, setSelectedResult] = useState(null);
   const [showRouteSelector, setShowRouteSelector] = useState(false);
-  const [selectedAmenity, setSelectedAmenity] = useState(AMENITY_TYPES.MARKET);
-  const [invalidSchools, setInvalidSchools] = useState([]);
-  const [noResultsSchools, setNoResultsSchools] = useState([]);
+  const [invalidStudents, setInvalidStudents] = useState([]);
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [selectedTravelMode, setSelectedTravelMode] = useState("walking");
   const [isProcessing, setIsProcessing] = useState(false);
   const [cancellationMessage, setCancellationMessage] = useState(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
   const cancelRequested = useRef(false);
 
   // Notice visibility control
   const [visibleNotices, setVisibleNotices] = useState({
     schoolsError: true,
-    placesError: true,
+    studentsError: true,
     routingError: true,
-    invalidSchools: true,
-    noResultsSchools: true,
+    invalidStudents: true,
     cancellationMessage: true,
     completionMessage: true,
-    saveError: true,
-    saveSuccess: true,
   });
 
   // Processing progress
@@ -102,10 +85,8 @@ export const ClosestPlaceFinder = () => {
       [noticeType]: false,
     }));
 
-    if (noticeType === "invalidSchools") {
-      setInvalidSchools([]);
-    } else if (noticeType === "noResultsSchools") {
-      setNoResultsSchools([]);
+    if (noticeType === "invalidStudents") {
+      setInvalidStudents([]);
     }
   };
 
@@ -116,54 +97,46 @@ export const ClosestPlaceFinder = () => {
     }
   };
 
-  // Process a single school
-  const processSchoolBatch = async (school, amenityType) => {
+  // Process a single student-school pair
+  const processStudentDistance = async (student, school) => {
     checkCancelled();
 
     try {
-      const foundPlaces = await processSchool(school, amenityType);
-      checkCancelled();
+      const studentCoords = student?.geometry?.coordinates;
+      const schoolCoords = school?.geometry?.coordinates;
 
-      const validPlaces =
-        foundPlaces?.filter((p) => p?.location?.lat && p?.location?.lng) || [];
-
-      if (validPlaces.length === 0) {
-        setNoResultsSchools((prev) => [...prev, school.name]);
+      if (!studentCoords || !schoolCoords) {
         return null;
       }
 
-      const closest = await findClosestPlace(
-        school,
-        validPlaces,
-        amenityType,
+      const result = await calculateDistance(
+        studentCoords,
+        schoolCoords,
         selectedTravelMode
       );
       checkCancelled();
 
-      return closest
+      return result
         ? {
-            ...closest,
-            school: school.name,
+            ...result,
+            studentId: student.id,
+            studentName: student.displayName,
             schoolId: school.id,
+            schoolName: school.displayName,
             batchId: currentBatchIndex,
-            rawData: {
-              ...school,
-              orgUnit: school.orgUnit || "UNKNOWN",
-            },
-            levelHierarchy: selectedLevelNames, 
             travelMode: selectedTravelMode,
           }
         : null;
     } catch (err) {
       if (err.message !== "Processing cancelled") {
-        console.error(`Error processing ${school.displayName}:`, err);
+        console.error(`Error processing ${student.displayName}:`, err);
       }
       return null;
     }
   };
 
   // Main processing function
-  const handleFetchData = async () => {
+  const handleCalculateDistances = async () => {
     if (isProcessing) {
       cancelRequested.current = true;
       setIsProcessing(false);
@@ -171,54 +144,57 @@ export const ClosestPlaceFinder = () => {
       return;
     }
 
-    if (schoolsLoading) return;
+    if (schoolsLoading || studentsLoading || selectedSchools.length === 0) return;
 
     // Reset states
     cancelRequested.current = false;
     setIsProcessing(true);
     setCancellationMessage(null);
-    setNoResultsSchools([]);
-    setInvalidSchools([]);
-    setSaveSuccess(false);
+    setInvalidStudents([]);
 
-    // Filter valid schools
-    const validSchools = selectedSchools.filter((school) => {
-      const coords = school?.geometry?.coordinates;
-      const isValid =
-        coords?.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1]);
-      if (!isValid) setInvalidSchools((prev) => [...prev, school.displayName]);
+    // Filter valid students
+    const validStudents = students.filter((student) => {
+      const coords = student?.geometry?.coordinates;
+      const isValid = coords?.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1]);
+      if (!isValid) setInvalidStudents((prev) => [...prev, student.displayName]);
       return isValid;
     });
 
     setAllResults([]);
-    setBatchResults([]);
     setSelectedResult(null);
     setCurrentBatchIndex(0);
     setProcessingProgress({
       processed: 0,
-      total: validSchools.length,
+      total: validStudents.length * selectedSchools.length,
       isComplete: false,
     });
 
     try {
-      for (let i = 0; i < validSchools.length; i += PROCESSING_BATCH_SIZE) {
+      // Process each student against each selected school
+      for (let i = 0; i < validStudents.length; i += PROCESSING_BATCH_SIZE) {
         checkCancelled();
 
-        const batch = validSchools.slice(i, i + PROCESSING_BATCH_SIZE);
+        const studentBatch = validStudents.slice(i, i + PROCESSING_BATCH_SIZE);
         setCurrentBatchIndex(i);
 
-        const results = await Promise.all(
-          batch.map((school) => processSchoolBatch(school, selectedAmenity))
-        );
+        const batchResults = [];
+        
+        for (const student of studentBatch) {
+          for (const school of selectedSchools) {
+            const result = await processStudentDistance(student, school);
+            if (result) {
+              batchResults.push(result);
+            }
+          }
+        }
+
         checkCancelled();
 
-        const validResults = results.filter(Boolean);
-        setBatchResults(validResults);
-        setAllResults((prev) => [...prev, ...validResults]);
+        setAllResults((prev) => [...prev, ...batchResults]);
         setProcessingProgress((prev) => ({
           ...prev,
-          processed: i + batch.length,
-          isComplete: i + batch.length >= validSchools.length,
+          processed: i * selectedSchools.length + batchResults.length,
+          isComplete: i + studentBatch.length >= validStudents.length,
         }));
 
         await new Promise((resolve) => {
@@ -239,33 +215,11 @@ export const ClosestPlaceFinder = () => {
     }
   };
 
-  // Save results handler
-  const handleSave = async () => {
-    try {
-      const { failures } = await saveBulk(allResults, selectedAmenity);
-
-      if (failures.length > 0) {
-        setVisibleNotices((prev) => ({ ...prev, saveError: true }));
-        setVisibleNotices((prev) => ({ ...prev, saveError: true }));
-      } else {
-        setSaveSuccess(true);
-        setVisibleNotices((prev) => ({
-          ...prev,
-          saveSuccess: true,
-          completionMessage: true,
-        }));
-      }
-    } catch (err) {
-      setSaveError(err.message);
-      setVisibleNotices((prev) => ({ ...prev, saveError: true }));
-    }
-  };
-
   // Export to CSV
   const handleExportCSV = () => {
     const headers = [
+      "Student",
       "School",
-      "Place",
       "Distance (km)",
       "Time",
       "Travel Mode",
@@ -273,7 +227,7 @@ export const ClosestPlaceFinder = () => {
     const rows = allResults
       .map(
         (r) =>
-          `"${r.school}","${r.place}",${r.distance},"${r.time}","${r.travelMode}"`
+          `"${r.studentName}","${r.schoolName}",${r.distance},"${r.time}","${r.travelMode}"`
       )
       .join("\n");
     const csv = `${headers}\n${rows}`;
@@ -281,9 +235,16 @@ export const ClosestPlaceFinder = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${selectedAmenity.label}_results.csv`;
+    link.download = `student_school_distances.csv`;
     link.click();
   };
+
+  // Fetch students when schools are selected
+  useEffect(() => {
+    if (selectedSchools.length > 0) {
+      fetchStudents(selectedSchools);
+    }
+  }, [selectedSchools]);
 
   // Cleanup effect
   useEffect(() => {
@@ -294,8 +255,8 @@ export const ClosestPlaceFinder = () => {
   }, []);
 
   return (
-    <div className="closest-place-finder">
-      <h1 className="app-header">School Proximity Analyzer</h1>
+    <div className="student-distance-calculator">
+      <h1 className="app-header">Student Distance Calculator</h1>
 
       <div className="control-panel">
         <div className="selection-section">
@@ -311,15 +272,9 @@ export const ClosestPlaceFinder = () => {
 
           {selectedSchools.length > 0 && (
             <div className="selection-count">
-              {selectedSchools.length} schools selected
+              {selectedSchools.length} schools selected, {students.length} students loaded
             </div>
           )}
-
-          <AmenitySelector
-            selectedType={selectedAmenity}
-            onChange={setSelectedAmenity}
-            options={Object.values(AMENITY_TYPES)}
-          />
         </div>
 
         <TravelModeSelector
@@ -330,7 +285,11 @@ export const ClosestPlaceFinder = () => {
 
         <div className="action-section">
           <ButtonStrip>
-            <Button onClick={handleFetchData} disabled={schoolsLoading} primary>
+            <Button 
+              onClick={handleCalculateDistances} 
+              disabled={schoolsLoading || studentsLoading || selectedSchools.length === 0} 
+              primary
+            >
               {isProcessing ? (
                 <span className="loading-content">
                   <CircularLoader small className="loading-icon" />
@@ -338,8 +297,10 @@ export const ClosestPlaceFinder = () => {
                 </span>
               ) : schoolsLoading ? (
                 "Loading Schools..."
+              ) : studentsLoading ? (
+                "Loading Students..."
               ) : (
-                "Find Closest Amenities"
+                "Calculate Distances"
               )}
             </Button>
 
@@ -351,21 +312,6 @@ export const ClosestPlaceFinder = () => {
               secondary
             >
               View Routes
-            </Button>
-
-            <Button
-              onClick={handleSave}
-              disabled={
-                !processingProgress.isComplete ||
-                saving ||
-                allResults.length === 0
-              }
-              secondary
-              icon={saving ? <CircularLoader small /> : null}
-            >
-              {saving
-                ? `Saving (${saveProgress.processed}/${saveProgress.total})`
-                : "Save Results"}
             </Button>
 
             <Button
@@ -391,13 +337,13 @@ export const ClosestPlaceFinder = () => {
               </NoticeBox>
             )}
 
-            {placesError && visibleNotices.placesError && (
+            {studentsError && visibleNotices.studentsError && (
               <NoticeBox
                 error
                 title="Error"
-                onClose={() => clearNotice("placesError")}
+                onClose={() => clearNotice("studentsError")}
               >
-                {placesError}
+                {studentsError}
               </NoticeBox>
             )}
 
@@ -411,36 +357,14 @@ export const ClosestPlaceFinder = () => {
               </NoticeBox>
             )}
 
-            {saveError && visibleNotices.saveError && (
-              <NoticeBox
-                error
-                title="Save Error"
-                onClose={() => clearNotice("saveError")}
-              >
-                {saveError}
-              </NoticeBox>
-            )}
-
             {/* Warning Notices */}
-            {invalidSchools.length > 0 && visibleNotices.invalidSchools && (
+            {invalidStudents.length > 0 && visibleNotices.invalidStudents && (
               <NoticeBox
                 warning
                 title="Notice"
-                onClose={() => clearNotice("invalidSchools")}
+                onClose={() => clearNotice("invalidStudents")}
               >
-                {invalidSchools.length} schools skipped due to invalid
-                coordinates
-              </NoticeBox>
-            )}
-
-            {noResultsSchools.length > 0 && visibleNotices.noResultsSchools && (
-              <NoticeBox
-                warning
-                title="Notice"
-                onClose={() => clearNotice("noResultsSchools")}
-              >
-                No {selectedAmenity.label} found near:{" "}
-                {noResultsSchools.join(", ")}
+                {invalidStudents.length} students skipped due to invalid coordinates
               </NoticeBox>
             )}
 
@@ -462,20 +386,9 @@ export const ClosestPlaceFinder = () => {
                   title="Processing Complete"
                   onClose={() => clearNotice("completionMessage")}
                 >
-                  Processed {processingProgress.processed} schools, found{" "}
-                  {allResults.length} results
+                  Calculated distances for {processingProgress.processed} student-school pairs
                 </NoticeBox>
               )}
-
-            {saveSuccess && visibleNotices.saveSuccess && (
-              <NoticeBox
-                success
-                title="Save Complete"
-                onClose={() => clearNotice("saveSuccess")}
-              >
-                Successfully saved {allResults.length} results
-              </NoticeBox>
-            )}
           </div>
         </div>
 
@@ -494,7 +407,7 @@ export const ClosestPlaceFinder = () => {
                 <div className="batch-progress">
                   Batch{" "}
                   {Math.floor(currentBatchIndex / PROCESSING_BATCH_SIZE) + 1}/
-                  {Math.ceil(selectedSchools.length / PROCESSING_BATCH_SIZE)}
+                  {Math.ceil(students.length / PROCESSING_BATCH_SIZE)}
                 </div>
               </div>
             </div>
@@ -514,15 +427,15 @@ export const ClosestPlaceFinder = () => {
             <div className="route-selector-container">
               {allResults.map((result, index) => (
                 <div
-                  key={`${result.school}-${result.place}-${index}`}
+                  key={`${result.studentId}-${result.schoolId}-${index}`}
                   className="route-option"
                   onClick={() => {
                     setSelectedResult(result);
                     setShowRouteSelector(false);
                   }}
                 >
-                  <strong>{result.school}</strong> to{" "}
-                  <strong>{result.place}</strong>
+                  <strong>{result.studentName}</strong> to{" "}
+                  <strong>{result.schoolName}</strong>
                   <div className="route-meta">
                     <span>Distance: {result.distance} km</span>
                     <span>Time: {result.time}</span>
@@ -554,12 +467,12 @@ export const ClosestPlaceFinder = () => {
 
       {/* Results Table */}
       <ResultsTable
-        places={allResults} // Changed from batchResults to allResults
+        results={allResults}
         loading={isProcessing}
-        selectedAmenity={selectedAmenity}
+        type="student-school"
       />
     </div>
   );
 };
 
-export default ClosestPlaceFinder;
+export default StudentDistanceCalculator;
