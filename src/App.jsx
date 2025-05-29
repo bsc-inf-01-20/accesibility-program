@@ -3,7 +3,6 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Navigation } from './components/Navigation/Navigation';
 import ClosestPlaceFinder from './pages/ClosestPlaceFinder';
 import SEMISRegistration from './pages/SEMISRegistration'; // Updated import
-import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import styles from './App.module.css';
 
@@ -48,7 +47,6 @@ const App = () => {
             <Routes>
               <Route path="/" element={<ClosestPlaceFinder />} />
               <Route path="/registration" element={<SEMISRegistration />} />
-              <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </div>
