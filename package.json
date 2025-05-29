@@ -7,10 +7,6 @@
   "scripts": {
     "start": "d2-app-scripts start --proxy https://emis.ccdev.org/dev",
     "build": "d2-app-scripts build",
-<<<<<<< HEAD
-    "start": "d2-app-scripts start --proxy https://project.ccdev.org/emis/",
-=======
->>>>>>> 78307b5ea2238b595da57b2ed2412a72f868a6bc
     "test": "d2-app-scripts test",
     "lint": "eslint .",
     "format": "prettier --write ."
