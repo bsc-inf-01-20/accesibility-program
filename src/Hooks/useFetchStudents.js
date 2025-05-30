@@ -26,7 +26,7 @@ export const useFetchStudents = () => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [programId, setProgramId] = useState("rNqCDmQ05XZ"); // Default to your program ID
+  const [programId, setProgramId] = useState("HN5Uxu8Tqtp"); // Default to your program ID
 
   const { 
     refetch: fetchStudentsQuery,
@@ -49,8 +49,8 @@ export const useFetchStudents = () => {
         if (student.geometry) {
           coordinates = student.geometry.coordinates || 
                        (student.geometry.split(';').map(Number));
-        } else if (attributes['dSbsnHRkmOI']) { // coordinates attribute
-          coordinates = attributes['dSbsnHRkmOI'].split(',').map(Number);
+        } else if (attributes['ovh2M3P8yWB']) { // coordinates attribute
+          coordinates = attributes['ovh2M3P8yWB'].split(',').map(Number);
         }
 
         return {
@@ -60,7 +60,7 @@ export const useFetchStudents = () => {
           displayName: `${attributes['gz8w04YBSS0'] || ''} ${attributes['ZIDlK6BaAU2'] || ''}`.trim() || 'Unknown Student',
           gender: attributes['X0vzx18XWqu'], // gender attribute
           birthDate: attributes['EPYqXuM0M2u'], // birthDate attribute
-          residence: attributes['nSwZkncLE3V'], // residence attribute
+          residence: attributes['yDIz9hHTfhj'], // residence attribute
           coordinates: coordinates,
           geometry: student.geometry,
           orgUnit: student.enrollments?.[0]?.orgUnit,

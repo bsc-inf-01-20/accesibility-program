@@ -6,7 +6,7 @@ export const Navigation = ({ collapsed, onCollapseToggle }) => {
   const menuItems = [
     { path: "/", label: "Proximity Analyzer", icon: "📍" },
     { path: "/registration", label: "Student Registration", icon: "👨‍🎓" },
-    { path: "/StudentDistanceCalculator", label: "StudentDistanceCalculator", icon: "📊" },
+    { path: "/Student Distance Calculator", label: "Student Distance Calculator", icon: "📊" },
     { path: "/settings", label: "Settings", icon: "⚙️" }
   ];
 
