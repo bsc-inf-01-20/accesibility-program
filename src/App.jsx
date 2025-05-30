@@ -3,7 +3,6 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Navigation } from './components/Navigation/Navigation';
 import ClosestPlaceFinder from './pages/ClosestPlaceFinder';
 import SEMISRegistration from './pages/SEMISRegistration';
-import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import styles from './App.module.css';
 
