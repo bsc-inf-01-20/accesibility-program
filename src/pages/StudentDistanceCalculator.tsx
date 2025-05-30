@@ -12,14 +12,19 @@ import {
 import { useFetchSchools } from "../Hooks/useFetchSchools";
 import { useFetchStudents } from "../Hooks/useFetchStudents";
 import { useGoogleRouting } from "../Hooks/useGoogleRouting";
-import { useSaveResults } from "../Hooks/useSaveResults";
 import { SchoolSelector } from "../components/SchoolSelector/SchoolSelector";
 import { TravelModeSelector } from "../components/TravelModeSelector/TravelModeSelector";
 import { ProgressTracker } from "../components/ProgressTracker/ProgressTracker";
 import { ResultsTable } from "../components/ResultsTable/ResultsTable";
 import "./StudentDistanceCalculator.css";
+import { useSaveStudentRoutesMongo } from "../Hooks/useSaveStudentRoutesMongo";
 
 interface Result {
+  schoolCoords: any;
+  location: any;
+  duration: any;
+  overviewPolyline: null;
+  academicYear: string;
   student: string;
   studentId: string;
   school: string;
@@ -36,8 +41,8 @@ interface Student {
   id: string;
   displayName: string;
   name: string;
-  coordinates?: [number, number]; // Optional tuple of numbers
-  [key: string]: any; // Allow other properties
+  coordinates?: [number, number];
+  [key: string]: any;
 }
 
 interface School {
@@ -89,11 +94,11 @@ export const StudentDistanceCalculator = () => {
   } = useGoogleRouting();
 
   const {
-    saveBulk,
+    saveBulkStudentRoutes,
     saving,
     error: saveError,
     progress: saveProgress,
-  } = useSaveResults();
+  } = useSaveStudentRoutesMongo();
 
   const [allResults, setAllResults] = useState<Result[]>([]);
   const [batchResults, setBatchResults] = useState<Result[]>([]);
@@ -103,9 +108,7 @@ export const StudentDistanceCalculator = () => {
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [selectedTravelMode, setSelectedTravelMode] = useState("walking");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [cancellationMessage, setCancellationMessage] = useState<string | null>(
-    null
-  );
+  const [cancellationMessage, setCancellationMessage] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const cancelRequested = useRef(false);
 
@@ -141,23 +144,15 @@ export const StudentDistanceCalculator = () => {
 
   const clearNotice = (noticeType: NoticeType) => {
     setVisibleNotices((prev) => ({ ...prev, [noticeType]: false }));
-
-    // Use a type guard for the specific notice types that need additional clearing
-    if (noticeType === "invalidStudents") {
-      setInvalidStudents([]);
-    } else if (noticeType === "noResultsStudents") {
-      setNoResultsStudents([]);
-    }
+    if (noticeType === "invalidStudents") setInvalidStudents([]);
+    else if (noticeType === "noResultsStudents") setNoResultsStudents([]);
   };
 
   const checkCancelled = () => {
     if (cancelRequested.current) throw new Error("Processing cancelled");
   };
 
-  const calculateStudentDistance = async (
-    student: Student,
-    school: School
-  ): Promise<Result | null> => {
+  const calculateStudentDistance = async (student: Student, school: School): Promise<Result | null> => {
     checkCancelled();
 
     try {
@@ -224,13 +219,9 @@ export const StudentDistanceCalculator = () => {
       return;
     }
 
-    if (
-      schoolsLoading ||
-      studentsLoading ||
-      !selectedLevels[5] ||
-      students.length === 0
-    )
+    if (schoolsLoading || studentsLoading || !selectedLevels[5] || students.length === 0) {
       return;
+    }
 
     cancelRequested.current = false;
     setIsProcessing(true);
@@ -241,9 +232,7 @@ export const StudentDistanceCalculator = () => {
 
     const validStudents = students.filter((student: Student) => {
       const coords = student.coordinates;
-      const isValid =
-        coords && coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1]);
-
+      const isValid = coords && coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1]);
       if (!isValid && student.displayName) {
         setInvalidStudents((prev) => [...prev, student.displayName]);
       }
@@ -294,23 +283,98 @@ export const StudentDistanceCalculator = () => {
   };
 
   const handleSave = async () => {
-    try {
-      const { failures } = await saveBulk(allResults, "student_distances");
-
-      if (failures.length > 0) {
-        setVisibleNotices((prev) => ({ ...prev, saveError: true }));
-      } else {
-        setSaveSuccess(true);
-        setVisibleNotices((prev) => ({
-          ...prev,
-          saveSuccess: true,
-          completionMessage: true,
-        }));
-      }
-    } catch (err) {
-      setVisibleNotices((prev) => ({ ...prev, saveError: true }));
+  try {
+    // Validate we have results to save
+    if (allResults.length === 0) {
+      console.warn('No results to save');
+      setVisibleNotices(prev => ({ ...prev, saveError: true }));
+      return;
     }
-  };
+
+    // Transform results for saving
+    const routesToSave = allResults.map((result) => {
+      // 1. Coordinate handling with validation
+      if (!result.schoolCoords || !result.location) {
+        console.error('Missing coordinates in result:', result);
+        throw new Error(`Missing coordinates for student ${result.studentId}`);
+      }
+
+      const studentCoords = Array.isArray(result.schoolCoords) ? 
+        result.schoolCoords : 
+        [0, 0];
+
+      const schoolCoords = [
+        result.location.lng, 
+        result.location.lat
+      ];
+
+      // 2. Duration conversion (if not already in seconds)
+      const durationInSeconds = typeof result.duration === 'number' ? 
+        result.duration : 
+        parseInt(result.duration) || 0;
+
+      // 3. Document preparation
+      return {
+        studentId: result.studentId,
+        studentName: result.student,
+        schoolId: result.schoolId,
+        schoolName: result.school || 'Unknown School',
+        travelMode: result.travelMode,
+        distance: parseFloat(result.distance.toFixed(3)),
+        duration: durationInSeconds,
+        coordinates: {
+          student: studentCoords,
+          school: schoolCoords
+        },
+        polyline: result.overviewPolyline || null,
+        academicYear: result.academicYear || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
+        division: result.levelHierarchy[2] || 'Unknown',
+        district: result.levelHierarchy[3] || 'Unknown',
+        zone: result.levelHierarchy[4] || 'Unknown',
+        rawData: { // Preserve original data for reference
+          student: result.student,
+          school: result.school,
+          timestamp: new Date().toISOString()
+        }
+      };
+    });
+
+    // Debug: Log first 3 documents
+    console.group('[SAVE] Sample Documents');
+    routesToSave.slice(0, 3).forEach((doc, i) => {
+      console.log(`Document ${i + 1}:`, {
+        student: doc.studentName,
+        school: doc.schoolName,
+        coords: doc.coordinates,
+        distance: doc.distance,
+        duration: doc.duration
+      });
+    });
+    console.groupEnd();
+
+    // Save to database
+    const { success, failures } = await saveBulkStudentRoutes(routesToSave);
+
+    if (failures?.length > 0) {
+      console.error('Partial save failures:', failures);
+      setVisibleNotices(prev => ({ ...prev, saveError: true }));
+    } else {
+      console.log('Successfully saved all documents');
+      setSaveSuccess(true);
+      setVisibleNotices(prev => ({
+        ...prev,
+        saveSuccess: true,
+        completionMessage: true
+      }));
+    }
+  } catch (err) {
+    console.error('Save operation failed:', {
+      error: err.message,
+      stack: err.stack
+    });
+    setVisibleNotices(prev => ({ ...prev, saveError: true }));
+  }
+};
 
   useEffect(() => {
     return () => {
@@ -319,6 +383,7 @@ export const StudentDistanceCalculator = () => {
     };
   }, []);
 
+  console.log(allResults);
   return (
     <div className="student-distance-calculator">
       <h1 className="app-header">Student Distance Calculator</h1>
@@ -338,17 +403,19 @@ export const StudentDistanceCalculator = () => {
               {selectedSchools.length} schools selected
             </div>
           )}
-          {selectedLevels[5]
-            ? students.length > 0 && (
-                <div className="selection-count">
-                  {students.length} students found
-                </div>
-              )
-            : selectedSchools.length > 0 && (
-                <div className="selection-count notice">
-                  Select a school at level 5 to fetch students
-                </div>
-              )}
+          {selectedLevels[5] ? (
+            students.length > 0 && (
+              <div className="selection-count">
+                {students.length} students found
+              </div>
+            )
+          ) : (
+            selectedSchools.length > 0 && (
+              <div className="selection-count notice">
+                Select a school at level 5 to fetch students
+              </div>
+            )
+          )}
         </div>
 
         <TravelModeSelector
@@ -441,7 +508,9 @@ export const StudentDistanceCalculator = () => {
             )}
 
             {saveSuccess && visibleNotices.saveSuccess && (
-              <NoticeBox title="Success">Results saved successfully!</NoticeBox>
+              <NoticeBox title="Success">
+                Results saved successfully!
+              </NoticeBox>
             )}
           </div>
         </div>
