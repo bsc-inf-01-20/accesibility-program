@@ -5,7 +5,7 @@
   "license": "BSD-3-Clause",
   "private": true,
   "scripts": {
-    "start": "d2-app-scripts start --proxy https://emis.ccdev.org/dev",
+    "start": "d2-app-scripts start --proxy https://project.ccdev.org/emis",
     "build": "d2-app-scripts build",
     "test": "d2-app-scripts test",
     "lint": "eslint .",

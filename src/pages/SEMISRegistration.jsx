@@ -48,7 +48,6 @@ const SEMISRegistration = () => {
     residence: '',
     coordinates: null,
     coordinatesText: '',
-    teacherId: '',
     specialization: ''
   });
   const [searchTerm, setSearchTerm] = useState('');
@@ -61,6 +60,7 @@ const SEMISRegistration = () => {
   const [dateError, setDateError] = useState(null);
   const [isFormValid, setIsFormValid] = useState(false);
   const [createdEntityId, setCreatedEntityId] = useState(null);
+  const [showSuccess, setShowSuccess] = useState(false);
   
   const { saveStudent, saving: savingStudent, error: studentError, success: studentSuccess, reset: resetStudent } = useSaveStudent();
   const { saveTeacher, saving: savingTeacher, error: teacherError, success: teacherSuccess, reset: resetTeacher } = useSaveTeacher();
@@ -84,8 +84,6 @@ const SEMISRegistration = () => {
     const coordinatesValid = !!formData.coordinates;
     const schoolValid = !!selectedSchool?.id;
     const roleValid = !!selectedRole;
-
-    const teacherIdValid = selectedRole !== 'teacher' || formData.teacherId?.trim()?.length >= 3;
     const specializationValid = selectedRole !== 'teacher' || formData.specialization?.trim()?.length >= 3;
 
     let dateValidation = { isValid: false, error: 'Date of birth is required' };
@@ -115,7 +113,6 @@ const SEMISRegistration = () => {
               residenceValid &&
               coordinatesValid &&
               schoolValid &&
-              teacherIdValid &&
               specializationValid,
       dateError: dateValidation.error
     };
@@ -126,6 +123,22 @@ const SEMISRegistration = () => {
     setIsFormValid(validation.isValid);
     setDateError(validation.dateError);
   }, [validateForm]);
+
+  const resetForm = () => {
+    setFormData({
+      firstName: '',
+      lastName: '',
+      gender: '',
+      birthDate: '',
+      residence: '',
+      coordinates: null,
+      coordinatesText: '',
+      specialization: ''
+    });
+    setSubmitError(null);
+    setDateError(null);
+    setIsFormValid(false);
+  };
 
   const handleSchoolSelect = (school) => {
     const validatedSchool = {
@@ -167,13 +180,13 @@ const SEMISRegistration = () => {
   };
 
   const handleDismissSuccess = () => {
+    setShowSuccess(false);
+    resetForm();
     if (selectedRole === 'student') {
-      resetStudent?.();
+      resetStudent();
     } else {
-      resetTeacher?.();
+      resetTeacher();
     }
-    setCreatedEntityId(null);
-    setSubmitError(null);
   };
 
   const handleSubmit = async (e) => {
@@ -200,6 +213,7 @@ const SEMISRegistration = () => {
 
     if (result?.success) {
       setCreatedEntityId(result.teiId);
+      setShowSuccess(true);
     } else {
       setSubmitError(result?.error || 'Registration failed');
     }
@@ -213,13 +227,13 @@ const SEMISRegistration = () => {
     <div className="semis-container">
       <h1>School Registration System</h1>
 
-      {(error) && (
+      {error && (
         <NoticeBox error title="Registration Error">
           {error}
         </NoticeBox>
       )}
 
-      {success && (
+      {showSuccess && (
         <NoticeBox 
           success 
           title="Registration Successful" 
@@ -289,6 +303,7 @@ const SEMISRegistration = () => {
               setSelectedSchool(null);
               setSelectedRole(null);
               setSearchTerm('');
+              resetForm();
             }}
           />
           
@@ -296,17 +311,7 @@ const SEMISRegistration = () => {
             Registering: <strong>{selectedRole === 'student' ? 'Student' : 'Teacher'}</strong>
             <Button small onClick={() => {
               setSelectedRole(null);
-              setFormData({
-                firstName: '',
-                lastName: '',
-                gender: '',
-                birthDate: '',
-                residence: '',
-                coordinates: null,
-                coordinatesText: '',
-                teacherId: '',
-                specialization: ''
-              });
+              resetForm();
             }}>
               Change
             </Button>
@@ -317,7 +322,6 @@ const SEMISRegistration = () => {
             onInputChange={handleInputChange}
             onSubmit={handleSubmit}
             saving={saving}
-            success={success}
             onMapButtonClick={handleMapButtonClick}
             isValid={isFormValid}
             dateError={dateError}

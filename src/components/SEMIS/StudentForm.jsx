@@ -6,7 +6,6 @@ export const StudentForm = ({
   onInputChange,
   onSubmit,
   saving,
-  success,
   onMapButtonClick,
   isValid,
   dateError,
@@ -47,39 +46,21 @@ export const StudentForm = ({
       </Card>
 
       {isTeacher && (
-        <>
-          <Card className="form-card">
-            <div className="uniform-field">
-              <label className="uniform-label required">Teacher ID</label>
-              <input
-                type="text"
-                className="uniform-input"
-                value={formData.teacherId}
-                onChange={(e) => onInputChange('teacherId', e.target.value)}
-                required
-              />
-              {formData.teacherId && formData.teacherId.trim().length < 3 && (
-                <Help error>Teacher ID must be at least 3 characters</Help>
-              )}
-            </div>
-          </Card>
-
-          <Card className="form-card">
-            <div className="uniform-field">
-              <label className="uniform-label required">Subject Specialization</label>
-              <input
-                type="text"
-                className="uniform-input"
-                value={formData.specialization}
-                onChange={(e) => onInputChange('specialization', e.target.value)}
-                required
-              />
-              {formData.specialization && formData.specialization.trim().length < 3 && (
-                <Help error>Specialization must be at least 3 characters</Help>
-              )}
-            </div>
-          </Card>
-        </>
+        <Card className="form-card">
+          <div className="uniform-field">
+            <label className="uniform-label required">Subject Specialization</label>
+            <input
+              type="text"
+              className="uniform-input"
+              value={formData.specialization}
+              onChange={(e) => onInputChange('specialization', e.target.value)}
+              required
+            />
+            {formData.specialization && formData.specialization.trim().length < 3 && (
+              <Help error>Specialization must be at least 3 characters</Help>
+            )}
+          </div>
+        </Card>
       )}
 
       <Card className="form-card">
@@ -156,7 +137,6 @@ export const StudentForm = ({
         primary 
         loading={saving}
         disabled={!isValid || saving}
-        icon={success ? "check" : null}
         className={`submit-button ${isValid ? 'active-button' : ''}`}
         style={{
           cursor: isValid ? 'pointer' : 'not-allowed',
