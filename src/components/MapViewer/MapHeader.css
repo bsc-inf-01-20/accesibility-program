@@ -1,42 +1,55 @@
 .leaflet-popup-header {
-    padding: 18px 24px;
-    background: #f8f9fa;
-    border-bottom: 1px solid #e0e0e0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-  }
-  
-  .route-info h3 {
-    margin: 0 0 10px 0;
-    font-size: 1.25rem;
-    color: #1a1a1a;
-    font-weight: 500;
-  }
-  
-  .route-meta {
-    display: flex;
-    gap: 20px;
-    font-size: 0.95rem;
-  }
-  
-  .route-meta span {
-    display: flex;
-    align-items: center;
-  }
-  
-  .icon {
-    margin-right: 6px;
-  }
-  
-  .close-button {
-    min-width: 36px;
-    min-height: 36px;
-    padding: 0;
-    border-radius: 50%;
-    font-size: 1.3rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
+  padding: 18px 24px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap; /* Allow wrapping on small screens */
+}
+
+.route-info {
+  flex-grow: 1;
+  min-width: 0; /* Prevent overflow when long text is present */
+  overflow: hidden;
+}
+
+.route-info h3 {
+  margin: 0 0 10px 0;
+  font-size: 1.25rem;
+  color: #1a1a1a;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.route-meta {
+  display: flex;
+  gap: 20px;
+  font-size: 0.95rem;
+  flex-wrap: wrap;
+}
+
+.route-meta span {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.icon {
+  margin-right: 6px;
+}
+
+.close-button {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}

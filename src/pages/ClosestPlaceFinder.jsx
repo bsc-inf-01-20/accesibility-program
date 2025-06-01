@@ -9,10 +9,10 @@ import {
   ModalActions,
   CircularLoader,
 } from "@dhis2/ui";
-import { useFetchSchools } from "../Hooks/useFetchSchools";
-import { useGooglePlacesApi } from "../Hooks/useGooglePlacesApi";
-import { useGoogleRouting } from "../Hooks/useGoogleRouting";
-import { useSaveResults } from "../Hooks/useSaveResults";
+import { useFetchSchools } from "../Hooks/useFetchSchools/useFetchSchools";
+import { useGooglePlacesApi } from "../Hooks/useGooglePlacesApi/useGooglePlacesApi";
+import { useGoogleRouting } from "../Hooks/useGoogleRouting/useGoogleRouting";
+import { useSaveResults } from "../Hooks/useSaveResults/useSaveResults";
 import { AMENITY_TYPES } from "../utils/constants";
 import { AmenitySelector } from "../components/AmenitySelector/AmenitySelector";
 import { ProgressTracker } from "../components/ProgressTracker/ProgressTracker";
@@ -24,6 +24,36 @@ import "./ClosestPlaceFinder.css";
 
 const PROCESSING_BATCH_SIZE = 5; // Schools per processing batch
 const SAVING_BATCH_SIZE = 50; // Events per save batch
+
+/**
+ * ClosestPlaceFinder Page
+ *
+ * This page is part of the accessibility project. It displays a list of schools fetched from DHIS2
+ * and calculates the closest amenity (e.g., market or clinic) for each school using the Google Directions API.
+ * It also allows users to filter places by type and save the resulting data to the DHIS2 instance and MongoDB.
+ *
+ * Key features:
+ * - Fetches school data via DHIS2 API.
+ * - Uses Google Places API to search for nearby amenities.
+ * - Uses Google Directions API to calculate walking distances.
+ * - Displays results in a searchable, filterable table.
+ * - Saves results via custom hook (`useSaveResults`) to MongoDB and DHIS2.
+ *
+ * Custom hooks used:
+ * - `useFetchSchools` – Retrieves schools from DHIS2.
+ * - `useGooglePlacesApi` – Searches for nearby places via backend proxy.
+ * - `useGoogleRouting` – Finds the closest place by walking distance.
+ * - `useSaveResults` – Saves the final results and status tracking.
+ *
+ * Technologies:
+ * - DHIS2 UI Library
+ * - Google Maps Platform (Places and Directions APIs)
+ * - Custom Node.js proxy backend
+ * - MongoDB
+ *
+ * @component
+ */
+
 
 export const ClosestPlaceFinder = () => {
   // School selection
@@ -294,7 +324,8 @@ export const ClosestPlaceFinder = () => {
       setIsProcessing(false);
     };
   }, []);
-
+console.log("ALLLL", allResults);
+ 
   return (
     <div className="closest-place-finder">
       <h1 className="app-header">School Proximity Analyzer</h1>
@@ -578,7 +609,13 @@ export const ClosestPlaceFinder = () => {
       <ResultsTable
         places={allResults} // Changed from batchResults to allResults
         loading={isProcessing}
-        selectedAmenity={selectedAmenity}
+                headers={{
+          schoolHeader: "School",
+          placeHeader: `Closest Amenity` ,
+          distanceHeader: "Distance (km)",
+          timeHeader: "Travel Time",
+          modeHeader: "Transport Mode",
+        }}
       />
     </div>
   );

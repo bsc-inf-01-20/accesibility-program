@@ -9,10 +9,23 @@
     "build": "d2-app-scripts build",
     "test": "d2-app-scripts test",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "docs:generate": "node ./scripts/generate-docs.js",
+    "docs:serve": "http-server docs -p 8080 -c-1",
+    "docs": "concurrently \"yarn docs:generate\" \"yarn docs:serve\"",
+    "styleguide": "styleguidist server",
+    "styleguide:build": "styleguidist build"
   },
   "devDependencies": {
+    "@babel/preset-env": "^7.27.2",
+    "@babel/preset-react": "^7.27.1",
     "@dhis2/cli-app-scripts": "^12.3.0",
+    "@storybook/addon-docs": "^9.0.3",
+    "@storybook/builder-webpack5": "^9.0.3",
+    "@storybook/manager-webpack5": "^6.5.16",
+    "@storybook/react": "^9.0.3",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
     "@types/react-router-dom": "^5.3.3",
     "axios": "^1.8.4",
     "concurrently": "^9.1.2",
@@ -21,10 +34,17 @@
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-react": "^7.33.2",
     "express": "^5.1.0",
+    "glob": "^11.0.2",
+    "handlebars": "^4.7.8",
+    "http-server": "^14.1.1",
     "nodemon": "^3.1.10",
-    "prettier": "^3.2.5"
+    "prettier": "^3.2.5",
+    "react-docgen-typescript": "^2.2.2",
+    "react-styleguidist": "^13.1.4",
+    "typedoc": "^0.28.5"
   },
   "dependencies": {
+    "@dhis2/app-adapter": "^12.6.1",
     "@dhis2/app-runtime": "^3.14.0",
     "@dhis2/ui": "^10.5.1",
     "@dhis2/ui-icons": "^10.6.0",
@@ -35,6 +55,7 @@
     "@types/leaflet.markercluster": "^1.5.5",
     "cors": "^2.8.5",
     "express-rate-limit": "^7.5.0",
+    "file-saver": "^2.0.5",
     "helmet": "^8.1.0",
     "https": "^1.0.0",
     "idb": "^8.0.3",
@@ -47,10 +68,12 @@
     "polyline": "^0.2.0",
     "prisma": "^6.7.0",
     "prop-types": "^15.8.1",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "^19.1.0",
+    "react-docgen": "4",
+    "react-dom": "^19.1.0",
     "react-leaflet": "4.2.1",
     "react-map-gl": "7.1.0",
-    "react-router-dom": "^6.22.1"
+    "react-router-dom": "^6.22.1",
+    "xlsx": "^0.18.5"
   }
 }

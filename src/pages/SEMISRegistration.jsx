@@ -4,9 +4,9 @@ import { SchoolSelector } from '../components/SEMIS/SchoolSelector';
 import { SchoolBanner } from '../components/SEMIS/SchoolBanner';
 import { StudentForm } from '../components/SEMIS/StudentForm';
 import { LocationMapModal } from '../components/SEMIS/LocationMapModal';
-import { useFetchSchools } from '../Hooks/useFetchSchools';
-import { useSaveStudent } from '../Hooks/useSaveStudent';
-import { useSaveTeacher } from '../Hooks/useSaveTeacher';
+import { useFetchSchools } from '../Hooks/useFetchSchools/useFetchSchools';
+import { useSaveStudent } from '../Hooks/useSaveStudent/useSaveStudent';
+import { useSaveTeacher } from '../Hooks/useSaveTeacher/useSaveTeacher';
 import './SEMISRegistration.css';
 
 const usePersistedSchool = () => {
@@ -35,6 +35,37 @@ const usePersistedSchool = () => {
   
   return [school, persistSchool];
 };
+/**
+ * overview
+ *
+ * This page is part of the School Accessibility project. It allows users to register either
+ * a student or a teacher under a selected school. It supports dynamic form rendering based on role selection,
+ * input validation (including date-based logic), and saving the data to both MongoDB and the DHIS2 instance.
+ *
+ * Key features:
+ * - Fetches schools from DHIS2 and allows selection.
+ * - Renders dynamic registration form based on selected role (student or teacher).
+ * - Validates inputs, including date of birth checks for students.
+ * - Automatically captures location coordinates from selected school or defaults.
+ * - Persists selected school in local storage.
+ * - Saves form data via custom hooks to MongoDB and DHIS2.
+ * - Displays success and error feedback via DHIS2 UI components.
+ * - Includes a map modal to show the location of the selected school.
+ *
+ * Custom hooks used:
+ * - `usePersistedSchool` – Manages selected school with localStorage support.
+ * - `useSaveStudent` – Handles student data submission to backend.
+ * - `useSaveTeacher` – Handles teacher data submission to backend.
+ * - `useFetchSchools` – Fetches school data from DHIS2 API.
+ *
+ * Technologies:
+ * - React (JSX)
+ * - DHIS2 UI Library
+ * - MongoDB (via backend API)
+ * - DHIS2 instance (for data integration)
+ *
+ * @component
+ */
 
 const SEMISRegistration = () => {
   const { selectedSchools = [], loading, error: fetchError } = useFetchSchools();

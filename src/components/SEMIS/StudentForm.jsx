@@ -1,6 +1,55 @@
 import React from 'react';
 import { InputField, Button, Card, Help } from '@dhis2/ui';
 
+
+/**
+ * StudentForm
+ *
+ * A comprehensive form component for registering students or teachers.
+ * Includes fields for personal information, location selection, and validation.
+ * Supports both student and teacher registration modes.
+ *
+ * @component
+ * @example
+ * return (
+ *   <StudentForm
+ *     formData={{
+ *       firstName: 'John',
+ *       lastName: 'Doe',
+ *       gender: 'Male',
+ *       birthDate: '2000-01-01',
+ *       residence: 'Lilongwe',
+ *       coordinates: [-13.966, 33.787],
+ *       coordinatesText: '13.966° S, 33.787° E'
+ *     }}
+ *     onInputChange={(field, value) => console.log(field, value)}
+ *     onSubmit={(e) => { e.preventDefault(); console.log('Submitted') }}
+ *     saving={false}
+ *     onMapButtonClick={() => console.log('Open map')}
+ *     isValid={true}
+ *     dateError={null}
+ *     isTeacher={false}
+ *   />
+ * )
+ *
+ * @param {Object} props
+ * @param {Object} props.formData - Current form values
+ * @param {string} props.formData.firstName - Student's first name
+ * @param {string} props.formData.lastName - Student's last name
+ * @param {string} [props.formData.specialization] - Teacher's subject specialization (when isTeacher=true)
+ * @param {string} props.formData.gender - Selected gender
+ * @param {string} props.formData.birthDate - Date of birth in YYYY-MM-DD format
+ * @param {string} props.formData.residence - Residence location text
+ * @param {Array<number>} [props.formData.coordinates] - Latitude/longitude array
+ * @param {string} [props.formData.coordinatesText] - Formatted coordinates text
+ * @param {Function} props.onInputChange - Callback when any input field changes (fieldName, value)
+ * @param {Function} props.onSubmit - Callback when form is submitted
+ * @param {boolean} props.saving - Whether form is currently submitting
+ * @param {Function} props.onMapButtonClick - Callback when location map button is clicked
+ * @param {boolean} props.isValid - Whether all required fields are valid
+ * @param {string|null} props.dateError - Error message for date validation
+ * @param {boolean} [props.isTeacher=false] - Whether form is in teacher registration mode
+ */
 export const StudentForm = ({
   formData,
   onInputChange,

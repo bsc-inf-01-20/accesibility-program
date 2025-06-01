@@ -1,0 +1,202 @@
+[
+  {
+    "file": "src\\App.jsx",
+    "components": [
+      {
+        "description": "",
+        "displayName": "App",
+        "methods": []
+      }
+    ]
+  },
+  {
+    "file": "src\\pages\\Settings.jsx",
+    "components": [
+      {
+        "description": "",
+        "displayName": "Settings",
+        "methods": []
+      }
+    ]
+  },
+  {
+    "file": "src\\components\\TravelModeSelector\\TravelModeSelector.jsx",
+    "components": [
+      {
+        "description": "",
+        "displayName": "TravelModeSelector",
+        "methods": [],
+        "props": {
+          "selectedMode": {
+            "type": {
+              "name": "enum",
+              "value": [
+                {
+                  "value": "'walking'",
+                  "computed": false
+                },
+                {
+                  "value": "'driving'",
+                  "computed": false
+                }
+              ]
+            },
+            "required": false,
+            "description": "",
+            "defaultValue": {
+              "value": "'walking'",
+              "computed": false
+            }
+          },
+          "onChange": {
+            "type": {
+              "name": "func"
+            },
+            "required": true,
+            "description": ""
+          }
+        }
+      }
+    ]
+  },
+  {
+    "file": "src\\components\\SEMIS\\StudentForm.jsx",
+    "components": [
+      {
+        "description": "",
+        "displayName": "StudentForm",
+        "methods": []
+      }
+    ]
+  },
+  {
+    "file": "src\\components\\SEMIS\\SchoolSelector.jsx",
+    "components": [
+      {
+        "description": "",
+        "displayName": "SchoolSelector",
+        "methods": [],
+        "props": {
+          "schools": {
+            "defaultValue": {
+              "value": "[]",
+              "computed": false
+            },
+            "required": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "file": "src\\components\\SEMIS\\SchoolBanner.jsx",
+    "components": [
+      {
+        "description": "",
+        "displayName": "SchoolBanner",
+        "methods": []
+      }
+    ]
+  },
+  {
+    "file": "src\\components\\SEMIS\\RegistrationStatus.jsx",
+    "components": [
+      {
+        "description": "",
+        "displayName": "RegistrationStatus",
+        "methods": []
+      }
+    ]
+  },
+  {
+    "file": "src\\components\\ProgressTracker\\ProgressTracker.jsx",
+    "components": [
+      {
+        "description": "",
+        "displayName": "ProgressTracker",
+        "methods": [],
+        "props": {
+          "processed": {
+            "type": {
+              "name": "number"
+            },
+            "required": true,
+            "description": ""
+          },
+          "total": {
+            "type": {
+              "name": "number"
+            },
+            "required": true,
+            "description": ""
+          }
+        }
+      }
+    ]
+  },
+  {
+    "file": "src\\components\\Navigation\\Navigation.jsx",
+    "components": [
+      {
+        "description": "",
+        "displayName": "Navigation",
+        "methods": []
+      }
+    ]
+  },
+  {
+    "file": "src\\components\\MapViewer\\MapHeader.jsx",
+    "components": [
+      {
+        "description": "",
+        "displayName": "MapHeader",
+        "methods": []
+      }
+    ]
+  },
+  {
+    "file": "src\\components\\MapViewer\\MapContainer.jsx",
+    "components": [
+      {
+        "description": "",
+        "displayName": "MapContainer",
+        "methods": [],
+        "props": {
+          "schoolName": {
+            "defaultValue": {
+              "value": "'School'",
+              "computed": false
+            },
+            "required": false
+          },
+          "placeName": {
+            "defaultValue": {
+              "value": "'Destination'",
+              "computed": false
+            },
+            "required": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "file": "src\\components\\BatchStatus\\BatchStatus.jsx",
+    "components": [
+      {
+        "description": "",
+        "displayName": "BatchStatus",
+        "methods": [],
+        "props": {
+          "currentBatch": {
+            "type": {
+              "name": "array"
+            },
+            "required": true,
+            "description": ""
+          }
+        }
+      }
+    ]
+  }
+]
