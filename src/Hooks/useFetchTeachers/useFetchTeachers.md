@@ -1,5 +1,3 @@
-### useFetchTeachers
-
 A custom React hook for fetching and managing teacher data in client-side state.
 
 #### Capabilities:

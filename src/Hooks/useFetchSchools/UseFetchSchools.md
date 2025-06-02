@@ -20,9 +20,9 @@ A custom React hook for managing DHIS2 organization unit hierarchy and school se
   - Handles school filtering and selection
   - Provides loading/error states
 
-## API Reference
+### API Reference
 
-### Returned Object
+#### Returned Object
 | Property            | Type                              | Description |
 |---------------------|-----------------------------------|-------------|
 | `selectedLevels`    | `Record<number, string>`         | Mapping of level numbers to org unit IDs |

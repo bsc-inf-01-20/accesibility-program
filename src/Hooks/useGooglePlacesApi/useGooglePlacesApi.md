@@ -25,6 +25,6 @@ Fetches nearby amenities for a given school.
 - `school`: Must contain `geometry.coordinates` as `[lng, lat]`
 - `amenityType`: A key defined in `AMENITY_TYPES` or a fallback query string
 
-### `AMENITY_TYPES`
+
 
 

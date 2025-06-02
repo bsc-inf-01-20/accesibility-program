@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import axios from "axios";
 
 export const useSaveTeacherRoutesMongo = () => {
@@ -8,168 +8,176 @@ export const useSaveTeacherRoutesMongo = () => {
     processed: 0,
     total: 0,
     lastSaved: null,
+    batchCount: 0
   });
+  const [results, setResults] = useState(null);
 
-  const prepareTeacherRouteDocument = (result) => {
-    // 1. Validate required fields
-    if (!result?.teacherId || !result?.schoolId) {
-      console.error('Missing required IDs:', {
-        teacherId: result?.teacherId,
-        schoolId: result?.schoolId
-      });
-      return null;
-    }
+ const prepareTeacherRouteDocument = useCallback((result) => {
+  // Validate required IDs
+  if (!result?.teacherId || !result?.schoolId) {
+    throw new Error(`Missing required IDs for teacher ${result.teacherId}`);
+  }
 
-    // 2. Process coordinates with validation
-    const coordinates = {
-      teacher: Array.isArray(result.coordinates?.teacher) && 
-               result.coordinates.teacher.length === 2 ?
-        result.coordinates.teacher.map(Number) :
-        [0, 0],
-      
-      school: Array.isArray(result.coordinates?.school) && 
-              result.coordinates.school.length === 2 ?
-        result.coordinates.school.map(Number) :
-        [35.30682563131544, -15.393456712733258] // Default fallback coordinates
+  // Check if coordinates are already properly formatted (new case)
+  if (result.coordinates && result.coordinates.teacher && result.coordinates.school) {
+    return {
+      teacherId: result.teacherId,
+      teacherName: result.teacher || result.teacherName || 'Unknown Teacher',
+      schoolId: result.schoolId,
+      schoolName: result.school || result.schoolName || 'Unknown School',
+      travelMode: result.travelMode || 'walking',
+      distance: result.distance || 0,
+      duration: result.duration || 0,
+      coordinates: {
+        teacher: result.coordinates.teacher,
+        school: result.coordinates.school
+      },
+      polyline: result.polyline || result.overviewPolyline || null,
+      academicYear: result.academicYear || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
+      division: result.division || result.levelHierarchy?.[2] || 'Unknown',
+      district: result.district || result.levelHierarchy?.[3] || 'Unknown',
+      zone: result.zone || result.levelHierarchy?.[4] || 'Unknown',
+      rawData: result.rawData || {}
     };
+  }
 
-    // 3. Prepare the document with type safety
-    const document = {
-      // Required fields from schema
-      teacherId: String(result.teacherId),
-      teacherName: String(result.teacherName || 'Unknown Teacher'),
-      schoolId: String(result.schoolId),
-      schoolName: String(result.schoolName || 'Unknown School'),
-      travelMode: String(result.travelMode || 'walking'),
-      distance: parseFloat(Number(result.distance || 0).toFixed(3)),
-      duration: Math.max(0, parseInt(result.duration || 0)),
-      coordinates,
-      academicYear: String(
-        result.academicYear || 
-        `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
-      ),
-      division: String(result.division || "Unknown"),
-      district: String(result.district || "Unknown"),
-      zone: String(result.zone || "Unknown"),
-      
-      // Teacher-specific fields
-      teacherCode: String(result.teacherCode || ''),
-      specialization: String(result.specialization || ''),
-      
-      // Optional fields
-      polyline: result.polyline ? String(result.polyline) : null,
-    };
-
-    // 4. Validation logging (for debugging)
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Processed teacher route document:', {
-        input: {
-          teacherId: result.teacherId,
-          schoolId: result.schoolId,
-          coordinates: result.coordinates
-        },
-        output: {
-          teacherId: document.teacherId,
-          schoolId: document.schoolId,
-          coordinates: document.coordinates,
-          distance: document.distance,
-          duration: document.duration
-        }
-      });
+  // Original extraction logic for backward compatibility
+  const extractCoordinates = (source) => {
+    if (!source) return null;
+    
+    if (Array.isArray(source)) {
+      return source.length === 2 ? source : null;
     }
-
-    return document;
+    
+    if (source.lat !== undefined && source.lng !== undefined) {
+      return [source.lng, source.lat];
+    }
+    
+    if (source.coordinates && Array.isArray(source.coordinates)) {
+      return source.coordinates;
+    }
+    
+    return null;
   };
 
-  const saveBulkTeacherRoutes = async (results) => {
-    if (!results || !Array.isArray(results) || results.length === 0) {
-      setError("No teacher routes provided for saving");
-      return { success: false, error: "No results provided" };
-    }
+  const teacherCoords = extractCoordinates(result.originCoords) || 
+                       extractCoordinates(result.originLocation) ||
+                       (result.rawData?.coordinates ? result.rawData.coordinates : null);
 
-    setSaving(true);
-    setError(null);
-    setProgress({ processed: 0, total: results.length, lastSaved: null });
+  const schoolCoords = extractCoordinates(result.location) ||
+                      (result.rawData?.orgUnit?.coordinates ? result.rawData.orgUnit.coordinates : null);
 
-    try {
-      const BATCH_SIZE = 50;
-      const successfulSaves = [];
-      const failedSaves = [];
+  if (!teacherCoords || !schoolCoords) {
+    throw new Error(`Missing coordinates for teacher ${result.teacherId}`);
+  }
 
-      for (let i = 0; i < results.length; i += BATCH_SIZE) {
-        const batch = results.slice(i, i + BATCH_SIZE);
+  return {
+    teacherId: result.teacherId,
+    teacherName: result.teacher || 'Unknown Teacher',
+    schoolId: result.schoolId,
+    schoolName: result.school || 'Unknown School',
+    travelMode: result.travelMode || 'walking',
+    distance: result.distance || 0,
+    duration: result.duration || 0,
+    coordinates: {
+      teacher: teacherCoords,
+      school: schoolCoords
+    },
+    polyline: result.overviewPolyline || null,
+    academicYear: result.academicYear || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
+    division: result.division || result.levelHierarchy?.[2] || 'Unknown',
+    district: result.district || result.levelHierarchy?.[3] || 'Unknown',
+    zone: result.zone || result.levelHierarchy?.[4] || 'Unknown',
+    rawData: result.rawData || {}
+  };
+}, []);
 
-        const documents = batch
-          .map((result) => {
-            try {
-              return prepareTeacherRouteDocument(result);
-            } catch (error) {
-              failedSaves.push({
-                teacherId: result.teacherId,
-                schoolId: result.schoolId,
-                error: error.message,
-              });
-              return null;
-            }
-          })
-          .filter(Boolean);
+ const saveBulkTeacherRoutes = useCallback(async (results) => {
+  if (!results || results.length === 0) {
+    setError("No valid results to save");
+    return { success: false, error: "No results provided" };
+  }
 
-        if (documents.length > 0) {
-          try {
-            const response = await axios.post(
-              "https://server-nu-peach.vercel.app/api/teacher-routes/bulk", // Updated endpoint
-              documents,
-              {
-                headers: { "Content-Type": "application/json" },
-                timeout: 30000,
-              }
-            );
+  setSaving(true);
+  setError(null);
+  setProgress({
+    processed: 0,
+    total: results.length,
+    lastSaved: null,
+    batchCount: 0
+  });
 
-            successfulSaves.push(...(response.data?.savedRoutes || []));
-            setProgress({
-              processed: i + documents.length,
-              total: results.length,
-              lastSaved: new Date().toISOString(),
-            });
-          } catch (error) {
-            failedSaves.push(
-              ...documents.map((doc) => ({
-                teacherId: doc.teacherId,
-                schoolId: doc.schoolId,
-                error: error.response?.data?.message || error.message,
-              }))
-            );
-          }
+  const BATCH_SIZE = 50;
+  const successfulSaves = [];
+  const failedSaves = [];
+
+  try {
+    for (let i = 0; i < results.length; i += BATCH_SIZE) {
+      const batch = results.slice(i, i + BATCH_SIZE);
+      const documents = batch.map(result => {
+        try {
+          return prepareTeacherRouteDocument(result);
+        } catch (error) {
+          failedSaves.push({
+            teacherId: result.teacherId,
+            schoolId: result.schoolId,
+            error: error.message,
+            type: "validation"
+          });
+          return null;
+        }
+      }).filter(Boolean);
+
+      if (documents.length > 0) {
+        try {
+          const response = await axios.post("https://server-nu-peach.vercel.app/api/teacher-routes/bulk", documents);
+          successfulSaves.push(...response.data?.insertedIds || []);
+        } catch (error) {
+          failedSaves.push(...documents.map(doc => ({
+            teacherId: doc.teacherId,
+            schoolId: doc.schoolId,
+            error: error.response?.data?.message || error.message,
+            type: "api"
+          })));
         }
       }
 
-      return {
-        success: failedSaves.length === 0,
-        savedCount: successfulSaves.length,
-        failedCount: failedSaves.length,
-        failures: failedSaves,
-      };
-    } catch (error) {
-      const errorMsg = error.response?.data?.message || error.message;
-      setError(errorMsg);
-      return {
-        success: false,
-        error: errorMsg,
-      };
-    } finally {
-      setSaving(false);
+      setProgress({
+        processed: Math.min(i + BATCH_SIZE, results.length),
+        total: results.length,
+        lastSaved: new Date().toISOString(),
+        batchCount: Math.ceil(i / BATCH_SIZE) + 1
+      });
     }
-  };
+
+    return {
+      success: failedSaves.length === 0,
+      saved: successfulSaves.length,
+      failed: failedSaves.length,
+      failures: failedSaves
+    };
+  } catch (error) {
+    setError(error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  } finally {
+    setSaving(false);
+  }
+}, [prepareTeacherRouteDocument]);
 
   return {
     saveBulkTeacherRoutes,
     saving,
     error,
     progress,
+    results,
     resetState: () => {
       setSaving(false);
       setError(null);
-      setProgress({ processed: 0, total: 0, lastSaved: null });
+      setProgress({ processed: 0, total: 0, lastSaved: null, batchCount: 0 });
+      setResults(null);
     },
   };
 };

@@ -301,15 +301,15 @@ export const TeacherDistanceCalculator = () => {
       }
 
       const routesToSave = allResults.map((result) => {
-        if (!result.schoolCoords || !result.location) {
+        if (!result.originCoords || !result.location) {
           console.error("Missing coordinates in result:", result);
           throw new Error(
             `Missing coordinates for teacher ${result.teacherId}`
           );
         }
 
-        const teacherCoords = Array.isArray(result.schoolCoords)
-          ? result.schoolCoords
+        const teacherCoords = Array.isArray(result.originCoords)
+          ? result.originCoords
           : [0, 0];
 
         const schoolCoords = [result.location.lng, result.location.lat];
